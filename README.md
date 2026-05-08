@@ -37,7 +37,7 @@ EPFL-LANES-Mask/
     │   └── chiplet_local_gates_mask.py
     ├── components/             # Reusable geometric primitives
     │   ├── markers.py          # Corner markers, crosses, pads
-    │   └── verniers.py         # Vernier alignment structures
+    <!-- │   └── verniers.py         # Vernier alignment structures -->
     ├── config/                 # Project-wide configuration
     │   ├── layers.py           # GDS layer definitions
     │   ├── paths.py            # Centralised file paths
@@ -284,7 +284,7 @@ cfg = WaferConfig(
 
 `row_config` controls how many chips sit in each row. The full array is always centred on the wafer origin. A more circular footprint can be achieved with e.g. `[4, 6, 6, 6, 6, 4]`.
 
-### Vernier alignment structures
+<!-- ### Vernier alignment structures
 
 Defined in `ChipletConfig`. These sit in the bottom-right corner of each chip, between the active area and the chip edge.
 
@@ -312,7 +312,7 @@ exposures = [
 ]
 ```
 
-Each entry is a `(label_string, layer_dict)` tuple. Add or remove entries to change the number of vernier pairs.
+Each entry is a `(label_string, layer_dict)` tuple. Add or remove entries to change the number of vernier pairs. -->
 
 ---
 
