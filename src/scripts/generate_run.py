@@ -100,7 +100,7 @@ def _build_local_gates_wafer(run_num: int, wafer_num: int) -> tuple[str, LocalGa
 
 MASK_TYPES = {
     "std": ("STD", _build_standard_wafer),
-    "lg":  ("STD", _build_local_gates_wafer),
+    "lg":  ("LG",  _build_local_gates_wafer),
 }
 
 def main():

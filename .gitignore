@@ -6,22 +6,16 @@ __pycache__/
 *.egg-info/
 .venv/
 
-# Edit-mode outputs — never track these
-masks/standard/*EDIT*
-masks/standard/*edit*
-
-# Experimental masks — never track
-masks/experimental/
-
-# Generated GDS and config outputs — regenerate from source
+# Generated GDS outputs — regenerate from source
 masks/standard/*.gds
 masks/standard/*.json
+masks/experimental/**
 
-# Keep the registry
+# Keep the registry — commit this after every production run
 !masks/.registry.json
 
-# VSCode
-.vscode/
+# VSCode — share launch configs, ignore personal settings
+.vscode/settings.json
 
 # OS
 .DS_Store

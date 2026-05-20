@@ -1,0 +1,95 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Wafer — Edit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/assembly/wafer_mask.py",
+            "args": ["--edit"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Wafer — Production",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/assembly/wafer_mask.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Wafer LG — Edit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/assembly/wafer_local_gates_mask.py",
+            "args": ["--edit"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Wafer LG — Production",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/assembly/wafer_local_gates_mask.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Chiplet — Edit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/chips/chiplet_mask.py",
+            "args": ["--edit"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Chiplet — Production",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/chips/chiplet_mask.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Chiplet LG — Edit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/chips/chiplet_local_gates_mask.py",
+            "args": ["--edit"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Chiplet LG — Production",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/chips/chiplet_local_gates_mask.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Generate Run",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/scripts/generate_run.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        }
+    ]
+}
