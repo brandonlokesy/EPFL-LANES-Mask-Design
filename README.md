@@ -37,7 +37,6 @@ EPFL-LANES-Mask/
     │   └── chiplet_local_gates_mask.py
     ├── components/             # Reusable geometric primitives
     │   ├── markers.py          # Corner markers, crosses, pads
-    <!-- │   └── verniers.py         # Vernier alignment structures -->
     ├── config/                 # Project-wide configuration
     │   ├── layers.py           # GDS layer definitions
     │   ├── paths.py            # Centralised file paths
@@ -48,7 +47,7 @@ EPFL-LANES-Mask/
         └── deplof_font.py      # DEPLOF stroke font renderer
 ```
 
-**The hierarchy is:** `components` → `chips` → `assembly`. Each level only imports from levels below it, never above.
+**The hierarchy is:** `components` → `chips` → `assembly`. Each level only imports from levels below it, never above. Currently, `/standard` is used for designs that will be fabricated over and over again (think chiplets for exfoliation or local gates). The `/experimental` folder is more suited to one-off designs when you are trying new designs.
 
 ---
 
@@ -318,7 +317,7 @@ Each entry is a `(label_string, layer_dict)` tuple. Add or remove entries to cha
 
 ## Generating a Production Run
 
-The run registry in `masks/.registry.json` tracks run and wafer numbers for each mask type. **This file is tracked by git.** Commit it after every production run so the counters stay in sync across the team.
+The run registry in `masks/.registry.json` tracks run and wafer numbers for each mask type. At the moment, `.registry.json` isn't tracked by git. Each user has their individual registry.
 
 ### Naming convention
 
@@ -347,7 +346,7 @@ python src/scripts/generate_run.py
 #    Wafers     → e.g. 5
 #    Confirm    → yes
 
-# 3. Commit the updated registry so colleagues see the new run numbers
+# 3. Commit the updated registry
 git add masks/.registry.json
 git commit -m "Run 02: 5x local gates wafers"
 ```
@@ -369,6 +368,8 @@ In `src/config/layers.py`, add your new layer with an appropriate number from th
 ### 2. Create a chiplet file in `src/chips/`
 
 Use `chiplet_local_gates_mask.py` as a template:
+
+What `chiplet_local_gates_mask.py` does is it takes the original `chiplet_mask.py` and adds local gates to the mask. When you want to make a new kind of chip (e.g. an array of patterns for adding strain; mesas to be etched), create a new python file, for  example `chiplet_mesa_mask.py`
 
 ```python
 # src/chips/chiplet_mesa_mask.py
@@ -409,6 +410,8 @@ def build_mesa_mask(lib: gdstk.Library,
 ```
 
 ### 3. Create a wafer file in `src/assembly/`
+
+With the chiplet mask created, we now want to make a wafer-scale repetition of our chiplet patterns. We can follow `wafer_local_gates_mask.py` as a reference. We call the method `build_wafer_mask` which tiles our wafer with the chips but pass our new chip mask `build_mesa_mask` into the `chiplet_builder` argument. 
 
 ```python
 # src/assembly/wafer_mesa_mask.py
