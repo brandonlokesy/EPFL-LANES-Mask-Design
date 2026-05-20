@@ -64,8 +64,8 @@ EPFL-LANES-Mask/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-org/epfl-lanes-mask.git
-cd epfl-lanes-mask
+git https://github.com/brandonlokesy/EPFL-LANES-Mask-Design.git
+cd EPFL-LANES-Mask-Design
 ```
 
 ### 2. Create the conda environment
