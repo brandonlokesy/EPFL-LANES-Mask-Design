@@ -1,4 +1,4 @@
-# EPFL LANES Mask Suite
+# EPFL LANES Mask Design
 
 A Python-based GDS mask design tool for lithographic patterning at the LANES lab (STI-IEM), EPFL. Built on [`gdstk`](https://heitzmann.github.io/gdstk/) and [`gdsfactory`](https://gdsfactory.github.io/gdsfactory/).
 
