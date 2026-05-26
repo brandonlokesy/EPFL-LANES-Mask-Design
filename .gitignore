@@ -12,8 +12,8 @@ masks/standard/*.json
 masks/experimental/**
 src/config/user_config.py
 
-# Keep the registry — commit this after every production run
-!masks/.registry.json
+# Each user has their own registry
+masks/.registry.json
 
 # VSCode — share launch configs, ignore personal settings
 .vscode/settings.json
