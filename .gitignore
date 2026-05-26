@@ -10,6 +10,7 @@ __pycache__/
 masks/standard/*.gds
 masks/standard/*.json
 masks/experimental/**
+src/config/user_config.py
 
 # Keep the registry — commit this after every production run
 !masks/.registry.json
