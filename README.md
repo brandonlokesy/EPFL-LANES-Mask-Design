@@ -108,6 +108,23 @@ Use **Ctrl+Shift+D** to open the Run & Debug panel and select a named launch con
 
 ## Quick Start
 
+### Change the `USER_ID`
+Go to `src/config/user_config.template.py`, you should see
+
+```python
+# user_config.template.py — copy this to user_config.py and fill in your details
+USER_ID = "YOUR INITIALS"
+```
+
+Create a new file `src/config/user_config.py` (without the `.template`!) and paste the following
+
+```python
+# user_config.py
+USER_ID = "ABC"
+```
+
+With this, each wafer you generate will have your initials on them.
+
 ### Generate a single chiplet (for layout inspection)
 
 Run from the terminal at project root:
