@@ -25,9 +25,9 @@ from src.config.paths import STANDARD_DIR
 @dataclass
 class LocalGatesChipletConfig(ChipletConfig):
     local_gate_sq_number:            int   = 7      # gates per side of the square array
-    local_gate_contact_width:        float = 10.0   # um
-    local_gate_min_height:           float = 20.0   # um
-    local_gate_max_height:           float = 50.0   # um
+    local_gate_contact_width:        float = 5.0   # um
+    local_gate_min_height:           float = 30.0   # um
+    local_gate_max_height:           float = 60.0   # um
     local_gate_min_height_clearance: float = 30.0   # um
     local_gate_array_margin:         float = 250.0  # um
     local_gate_array_spacing:        float = 1000.0 # um
