@@ -24,9 +24,9 @@ from src.config.paths import STANDARD_DIR
 
 @dataclass
 class LocalGatesChipletConfig(ChipletConfig):
-    local_gate_sq_number:            int   = 7      # gates per side of the square array
+    local_gate_sq_number:            int   = 9      # gates per side of the square array
     local_gate_min_dim:              float = 30.0   # um
-    local_gate_max_dim:              float = 60.0   # um
+    local_gate_max_dim:              float = 70.0   # um
     local_gate_contact_length:       float = 10.0   # um
     local_gate_contact_width:        float = 5.0   # um
     local_gate_array_margin:         float = 250.0  # um
@@ -58,9 +58,9 @@ def _draw_local_gate(cell: gdstk.Cell,
 
     vtx = [
         (cx - width/2,  cy - height/2),
-        (cx + width/2,  cy - height/2),
-        (cx + width/2,  cy + height/2),
         (cx - width/2,  cy + height/2),
+        (cx + width/2,  cy + height/2),
+        (cx + width/2,  cy - height/2),
     ]
 
     cell.add(gdstk.Polygon(vtx, **LAYERS["local_gates"]))
@@ -77,7 +77,7 @@ def _add_local_gates(cell: gdstk.Cell,
 
     x_start = -array_outer_x + cfg.grid_inset * 5/2
     y_start =  array_outer_y - cfg.grid_inset * 5/2
-    sp      = cfg.grid_spacing * 4
+    sp      = cfg.grid_spacing * 3
 
     for row_idx in range(cfg.local_gate_sq_number):
         for col_idx in range(cfg.local_gate_sq_number):
