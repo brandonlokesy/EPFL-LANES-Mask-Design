@@ -55,6 +55,8 @@ LAYERS = {
     "ring":                 {"layer": 41, "datatype": 0},
     "grating":              {"layer": 42, "datatype": 0},
     "photonic_crystal":     {"layer": 43, "datatype": 0},
+    "heater":               {"layer": 44, "datatype": 0},   # TiN thermo-optic heater
+    "metal_contact":        {"layer": 45, "datatype": 0},   # contacts to heater
 
     # ── DIELECTRIC ────────────────────────────────────────────────────────────
     "dielectric":           {"layer": 50, "datatype": 0},
