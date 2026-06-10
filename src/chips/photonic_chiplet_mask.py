@@ -21,12 +21,12 @@ import gdsfactory as gf
 
 from src.config.layers import LAYERS
 from src.config.paths import EXPERIMENTAL_DIR
-
-# from src.chips.chiplet_mask import (
-#     _add_corner_markers,
-#     _add_big_pads,
-#     _add_rectangular_pad_array,
-# )
+from src.chips.layout_geometry import (
+    corner_marker_positions,
+    big_pad_square_positions,
+    big_pad_L_origin,
+    rectangular_pad_positions,
+)
 from src.utils.text import draw_chiplet_number
 from src.components.photonics.technology import LAYER, _l
 from src.components.photonics.rings import RingConfig, from_config as ring_from_config, make_ring_sweep
@@ -170,10 +170,7 @@ def _make_corner_marker(sq_size: float, sq_gap: float, array: str = "3x3") -> gf
 
 def _add_corner_markers(c: gf.Component, cfg: PhotonicChipletConfig) -> None:
     marker = _make_corner_marker(cfg.corner_sq_size, cfg.corner_sq_gap, cfg.corner_marker_style)
-    hw, hh = cfg.chip_width / 2, cfg.chip_height / 2
-    inset = cfg.corner_margin
-    for cx, cy in [(-hw+inset, -hh+inset), (hw-inset, -hh+inset),
-                   (-hw+inset,  hh-inset), (hw-inset,  hh-inset)]:
+    for cx, cy in corner_marker_positions(cfg.chip_width, cfg.chip_height, cfg.corner_margin):
         c.add_ref(marker).move((cx, cy))
 
 
@@ -206,16 +203,12 @@ def _add_big_pads(c: gf.Component, cfg: PhotonicChipletConfig) -> None:
     sq    = _make_big_pad_square(cfg.pad_sq_size)
     l_pad = _make_big_pad_L(cfg.pad_sq_size, cfg.pad_L_length)
 
-    hw, hh = cfg.chip_width / 2, cfg.chip_height / 2
-    inset  = cfg.pad_sq_margin
-
-    for cx, cy in [(hw-inset, -hh+inset), (-hw+inset, hh-inset), (hw-inset, hh-inset)]:
+    for cx, cy in big_pad_square_positions(cfg.chip_width, cfg.chip_height, cfg.pad_sq_margin):
         c.add_ref(sq).move((cx, cy))
 
-    c.add_ref(l_pad).move((
-        -hw + inset - cfg.pad_sq_size / 2,
-        -hh + inset - cfg.pad_sq_size / 2,
-    ))
+    c.add_ref(l_pad).move(
+        big_pad_L_origin(cfg.chip_width, cfg.chip_height, cfg.pad_sq_margin, cfg.pad_sq_size)
+    )
 
 
 def _add_rectangular_pad_array(c: gf.Component, cfg: PhotonicChipletConfig) -> None:
@@ -223,29 +216,14 @@ def _add_rectangular_pad_array(c: gf.Component, cfg: PhotonicChipletConfig) -> N
     v_pad = _make_rectangular_pad(cfg.rec_pad_length, cfg.rec_pad_width, "vertical")
     h_pad = _make_rectangular_pad(cfg.rec_pad_length, cfg.rec_pad_width, "horizontal")
 
-    pitch  = cfg.rec_pad_gap + cfg.rec_pad_length
-    hw, hh = cfg.chip_width / 2, cfg.chip_height / 2
-
-    # Vertical pads — left edge, top-to-bottom
-    top_left_x = -hw + cfg.pad_sq_margin
-    top_left_y =  hh - cfg.pad_sq_margin
-    for i in range(14):
-        c.add_ref(v_pad).move((
-            top_left_x + cfg.pad_sq_size/2 - cfg.rec_pad_width/2,
-            top_left_y - cfg.pad_sq_size/2 - cfg.rec_pad_margin_from_big_pad - i * pitch,
-        ))
-
-    # Horizontal pads — bottom edge, left-to-right (skip indices 4–8)
-    skip       = set(range(4, 9))
-    bot_left_x = -hw + cfg.pad_sq_margin
-    bot_left_y = -hh + cfg.pad_sq_margin
-    for i in range(14):
-        if i in skip:
-            continue
-        c.add_ref(h_pad).move((
-            bot_left_x + 3*cfg.pad_sq_size/2 + cfg.rec_pad_margin_from_big_pad + i * pitch,
-            bot_left_y + cfg.pad_sq_size/2 - cfg.rec_pad_width/2,
-        ))
+    v_positions, h_positions = rectangular_pad_positions(
+        cfg.chip_width, cfg.chip_height, cfg.pad_sq_margin, cfg.pad_sq_size,
+        cfg.rec_pad_length, cfg.rec_pad_width, cfg.rec_pad_margin_from_big_pad, cfg.rec_pad_gap,
+    )
+    for pos in v_positions:
+        c.add_ref(v_pad).move(pos)
+    for pos in h_positions:
+        c.add_ref(h_pad).move(pos)
 
 
 def build_photonic_chiplet_mask(

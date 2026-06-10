@@ -28,6 +28,12 @@ from pathlib import Path
 
 from src.config.layers import LAYERS
 from src.config.paths import STANDARD_DIR
+from src.chips.layout_geometry import (
+    corner_marker_positions,
+    big_pad_square_positions,
+    big_pad_L_origin,
+    rectangular_pad_positions,
+)
 from src.utils.deplof_font import deplof_text
 from src.components.markers import (
     make_corner_marker,
@@ -37,6 +43,7 @@ from src.components.markers import (
     make_rectangular_pad,
 )
 from src.components.verniers import VernierConfig, add_vernier_set, vernier_set_width, vernier_set_height
+from src.utils.text import draw_chiplet_number
 
 
 # =============================================================================
@@ -130,186 +137,8 @@ class ChipletConfig:
 
 
 # =============================================================================
-# BLOCK LETTER DIGIT FONT
+# INTERNAL BUILDERS
 # =============================================================================
-#
-# Each digit is a hollow block outline:
-#   outer boundary  MINUS  inner cutout(s)  via gdstk.boolean("not")
-#
-# All coordinates are normalised to a unit grid (x,y ∈ [0,1]) and scaled
-# to (char_w, char_h) at draw time.
-#
-# sw  = stroke_width
-# c   = outer chamfer size
-# ci  = inner chamfer size  (= c * 0.5)
-
-def _chamfer_poly(x0: float, y0: float,
-                  x1: float, y1: float,
-                  c_tl: float, c_tr: float,
-                  c_br: float, c_bl: float) -> gdstk.Polygon:
-    """
-    Rectangle with independent 45° chamfers on each corner.
-    Pass 0 for a sharp (unchamfered) corner.
-    """
-    pts = []
-    if c_bl > 0:
-        pts += [(x0 + c_bl, y0), (x0, y0 + c_bl)]
-    else:
-        pts += [(x0, y0)]
-    if c_tl > 0:
-        pts += [(x0, y1 - c_tl), (x0 + c_tl, y1)]
-    else:
-        pts += [(x0, y1)]
-    if c_tr > 0:
-        pts += [(x1 - c_tr, y1), (x1, y1 - c_tr)]
-    else:
-        pts += [(x1, y1)]
-    if c_br > 0:
-        pts += [(x1, y0 + c_br), (x1 - c_br, y0)]
-    else:
-        pts += [(x1, y0)]
-    return gdstk.Polygon(pts)
-
-
-def _draw_digit(cell: gdstk.Cell, digit: str,
-                x0: float, y0: float,
-                char_w: float, char_h: float,
-                stroke_w: float, chamfer: float,
-                layer: dict) -> None:
-    """
-    Draws a single block-letter digit as a hollow chamfered outline.
-    Uses gdstk.boolean("not") so there is no double-exposure — correct
-    for lithographic masks.
-    """
-    if digit not in "0123456789":
-        return
-
-    lp  = {"layer": layer["layer"], "datatype": layer["datatype"]}
-    sw  = stroke_w
-    c   = chamfer
-    ci  = chamfer * 0.5
-    W   = char_w
-    H   = char_h
-
-    def outer():
-        return _chamfer_poly(x0, y0, x0+W, y0+H, c, c, c, c)
-
-    def inner_box(left=True, right=True, top=True, bottom=True):
-        ix0 = x0 + sw  if left   else x0 - sw
-        ix1 = x0+W-sw  if right  else x0+W+sw
-        iy0 = y0 + sw  if bottom else y0 - sw
-        iy1 = y0+H-sw  if top    else y0+H+sw
-        c_tl = ci if (left  and top)    else 0
-        c_tr = ci if (right and top)    else 0
-        c_br = ci if (right and bottom) else 0
-        c_bl = ci if (left  and bottom) else 0
-        return _chamfer_poly(ix0, iy0, ix1, iy1, c_tl, c_tr, c_br, c_bl)
-
-    def hbar(yb, yt):
-        return _chamfer_poly(x0, yb, x0+W, yt, ci, ci, ci, ci)
-
-    mid   = y0 + H * 0.5
-    midy0 = mid - sw * 0.5
-    midy1 = mid + sw * 0.5
-
-    if digit == "0":
-        result = gdstk.boolean([outer()], [inner_box()], "not", **lp)
-
-    elif digit == "1":
-        result = gdstk.boolean(
-            [_chamfer_poly(x0+W-sw, y0, x0+W, y0+H, c, c, c, c)], [], "or", **lp)
-
-    elif digit == "2":
-        top_bar = _chamfer_poly(x0, y0+H-sw, x0+W, y0+H, c, c, 0, 0)
-        r_upper = _chamfer_poly(x0+W-sw, midy1, x0+W, y0+H-sw, 0, 0, 0, 0)
-        mid_bar = _chamfer_poly(x0, midy0, x0+W, midy1, c, 0, 0, 0)
-        l_lower = _chamfer_poly(x0, y0+sw, x0+sw, midy0, 0, 0, 0, 0)
-        bot_bar = _chamfer_poly(x0, y0, x0+W, y0+sw, 0, 0, c, c)
-        result  = gdstk.boolean([top_bar, r_upper, mid_bar, l_lower, bot_bar], [], "or", **lp)
-
-    elif digit == "3":
-        top_bar = _chamfer_poly(x0, y0+H-sw, x0+W, y0+H, ci, c, c, ci)
-        r_vert  = _chamfer_poly(x0+W-sw, y0, x0+W, y0+H, ci, ci, ci, ci)
-        mid_bar = hbar(midy0, midy1)
-        bot_bar = _chamfer_poly(x0, y0, x0+W, y0+sw, c, ci, ci, c)
-        result  = gdstk.boolean([top_bar, r_vert, mid_bar, bot_bar], [], "or", **lp)
-
-    elif digit == "4":
-        l_upper = _chamfer_poly(x0, midy0, x0+sw, y0+H, c, ci, ci, ci)
-        mid_bar = hbar(midy0, midy1)
-        r_vert  = _chamfer_poly(x0+W-sw, y0, x0+W, y0+H, c, c, c, c)
-        result  = gdstk.boolean([l_upper, mid_bar, r_vert], [], "or", **lp)
-
-    elif digit == "5":
-        top_bar = _chamfer_poly(x0, y0+H-sw, x0+W, y0+H, c, c, 0, 0)
-        l_upper = _chamfer_poly(x0, midy1, x0+sw, y0+H-sw, 0, 0, 0, 0)
-        mid_bar = _chamfer_poly(x0, midy0, x0+W, midy1, 0, 0, 0, 0)
-        r_lower = _chamfer_poly(x0+W-sw, y0+sw, x0+W, midy0, 0, 0, 0, 0)
-        bot_bar = _chamfer_poly(x0, y0, x0+W, y0+sw, 0, 0, c, c)
-        result  = gdstk.boolean([top_bar, l_upper, mid_bar, r_lower, bot_bar], [], "or", **lp)
-
-    elif digit == "6":
-        top_bar = _chamfer_poly(x0, y0+H-sw, x0+W, y0+H, c, c, 0, 0)
-        l_vert  = _chamfer_poly(x0, y0, x0+sw, y0+H, 0, 0, 0, 0)
-        mid_bar = _chamfer_poly(x0+sw, midy0, x0+W, midy1, 0, c, 0, 0)
-        r_lower = _chamfer_poly(x0+W-sw, y0+sw, x0+W, midy0, 0, 0, 0, 0)
-        bot_bar = _chamfer_poly(x0, y0, x0+W, y0+sw, 0, 0, c, c)
-        result  = gdstk.boolean([top_bar, l_vert, mid_bar, r_lower, bot_bar], [], "or", **lp)
-
-    elif digit == "7":
-        top_bar = _chamfer_poly(x0, y0+H-sw, x0+W, y0+H, c, c, ci, ci)
-        r_vert  = _chamfer_poly(x0+W-sw, y0, x0+W, y0+H, ci, ci, c, c)
-        result  = gdstk.boolean([top_bar, r_vert], [], "or", **lp)
-
-    elif digit == "8":
-        win_h     = (H - 3*sw) / 2
-        mid_y0    = y0 + sw + win_h
-        mid_y1    = mid_y0 + sw
-        upper_cut = _chamfer_poly(x0+sw, mid_y1,  x0+W-sw, y0+H-sw, ci, ci, ci, ci)
-        lower_cut = _chamfer_poly(x0+sw, y0+sw,   x0+W-sw, mid_y0,  ci, ci, ci, ci)
-        mid_bar   = _chamfer_poly(x0,    mid_y0,  x0+W,    mid_y1,   0,  0,  0,  0)
-        shell  = gdstk.boolean([outer()], [upper_cut, lower_cut], "not", **lp)
-        result = gdstk.boolean(shell, [mid_bar], "or", **lp)
-
-    elif digit == "9":
-        top_half  = _chamfer_poly(x0, midy0, x0+W, y0+H, c, c, ci, ci)
-        inner_top = _chamfer_poly(x0+sw, midy1, x0+W-sw, y0+H-sw, ci, ci, ci, ci)
-        r_lower   = _chamfer_poly(x0+W-sw, y0, x0+W, midy1, ci, ci, ci, ci)
-        bot_bar   = _chamfer_poly(x0, y0, x0+W, y0+sw, c, ci, ci, c)
-        result    = gdstk.boolean([top_half, r_lower, bot_bar], [inner_top], "not", **lp)
-
-    for poly in result:
-        cell.add(poly)
-
-
-def _draw_chiplet_number(cell: gdstk.Cell,
-                         number: int,
-                         cfg: ChipletConfig) -> None:
-    """
-    Draws the chiplet number (0–99) as a zero-padded block-letter label,
-    horizontally centred at x=0, vertically at -chip_height/2 + chiplet_id_centre_y.
-    """
-    label    = f"{number:02d}"
-    char_h   = cfg.chiplet_id_text_size
-    char_w   = char_h * cfg.chiplet_id_char_w_ratio
-    stroke_w = char_h * cfg.chiplet_id_stroke_ratio
-    gap      = char_h * cfg.chiplet_id_gap_ratio
-    chamfer  = stroke_w * cfg.chiplet_id_chamfer_ratio
-
-    n       = len(label)
-    total_w = n * char_w + (n - 1) * gap
-
-    cx = 0.0
-    cy = -cfg.chip_height / 2 + cfg.chiplet_id_centre_y
-    x0 = cx - total_w / 2
-    y0 = cy - char_h  / 2
-
-    for i, ch in enumerate(label):
-        _draw_digit(cell, ch,
-                    x0 + i * (char_w + gap), y0,
-                    char_w, char_h, stroke_w, chamfer,
-                    LAYERS["chiplet_id"])
-
 
 # =============================================================================
 # INTERNAL BUILDERS
@@ -321,12 +150,7 @@ def _add_corner_markers(cell: gdstk.Cell,
     """Places one corner marker reference at each of the four chip corners."""
     cm_cell = make_corner_marker(lib, cfg.corner_sq_size,
                                  cfg.corner_sq_gap, cfg.corner_marker_style)
-    hw    = cfg.chip_width  / 2
-    hh    = cfg.chip_height / 2
-    inset = cfg.corner_margin
-
-    for cx, cy in [(-hw+inset, -hh+inset), ( hw-inset, -hh+inset),
-                   (-hw+inset,  hh-inset), ( hw-inset,  hh-inset)]:
+    for cx, cy in corner_marker_positions(cfg.chip_width, cfg.chip_height, cfg.corner_margin):
         cell.add(gdstk.Reference(cm_cell, origin=(cx, cy)))
 
 
@@ -337,19 +161,12 @@ def _add_big_pads(cell: gdstk.Cell,
     sq_cell = make_big_pad_square(lib, cfg.pad_sq_size)
     l_cell  = make_big_pad_L(lib, cfg.pad_sq_size, cfg.pad_L_length)
 
-    hw    = cfg.chip_width  / 2
-    hh    = cfg.chip_height / 2
-    inset = cfg.pad_sq_margin
-
-    for cx, cy in [( hw-inset, -hh+inset),
-                   (-hw+inset,  hh-inset),
-                   ( hw-inset,  hh-inset)]:
+    for cx, cy in big_pad_square_positions(cfg.chip_width, cfg.chip_height, cfg.pad_sq_margin):
         cell.add(gdstk.Reference(sq_cell, origin=(cx, cy)))
 
     cell.add(gdstk.Reference(
         l_cell,
-        origin=(-hw + inset - cfg.pad_sq_size/2,
-                -hh + inset - cfg.pad_sq_size/2)
+        origin=big_pad_L_origin(cfg.chip_width, cfg.chip_height, cfg.pad_sq_margin, cfg.pad_sq_size),
     ))
 
 
@@ -389,32 +206,14 @@ def _add_rectangular_pad_array(cell: gdstk.Cell,
     v_pad = make_rectangular_pad(lib, cfg.rec_pad_length, cfg.rec_pad_width, "vertical")
     h_pad = make_rectangular_pad(lib, cfg.rec_pad_length, cfg.rec_pad_width, "horizontal")
 
-    pitch = cfg.rec_pad_gap + cfg.rec_pad_length
-    hw    = cfg.chip_width  / 2
-    hh    = cfg.chip_height / 2
-
-    # Vertical pads — left edge, top-to-bottom
-    top_left_x = -hw + cfg.pad_sq_margin
-    top_left_y =  hh - cfg.pad_sq_margin
-    for i in range(14):
-        cell.add(gdstk.Reference(
-            v_pad,
-            origin=(top_left_x + cfg.pad_sq_size/2 - cfg.rec_pad_width/2,
-                    top_left_y - cfg.pad_sq_size/2 - cfg.rec_pad_margin_from_big_pad - i * pitch)
-        ))
-
-    # Horizontal pads — bottom edge, left-to-right (skip indices 4–8)
-    skip = set(range(4, 9))
-    bot_left_x = -hw + cfg.pad_sq_margin
-    bot_left_y = -hh + cfg.pad_sq_margin
-    for i in range(14):
-        if i in skip:
-            continue
-        cell.add(gdstk.Reference(
-            h_pad,
-            origin=(bot_left_x + 3*cfg.pad_sq_size/2 + cfg.rec_pad_margin_from_big_pad + i * pitch,
-                    bot_left_y + cfg.pad_sq_size/2 - cfg.rec_pad_width/2)
-        ))
+    v_positions, h_positions = rectangular_pad_positions(
+        cfg.chip_width, cfg.chip_height, cfg.pad_sq_margin, cfg.pad_sq_size,
+        cfg.rec_pad_length, cfg.rec_pad_width, cfg.rec_pad_margin_from_big_pad, cfg.rec_pad_gap,
+    )
+    for pos in v_positions:
+        cell.add(gdstk.Reference(v_pad, origin=pos))
+    for pos in h_positions:
+        cell.add(gdstk.Reference(h_pad, origin=pos))
 
 
 # =============================================================================
@@ -633,7 +432,7 @@ def build_chiplet_mask(lib: gdstk.Library,
     _add_top_pad_array(cell, lib, cfg)
     _add_rectangular_pad_array(cell, lib, cfg)
     _add_position_grid(cell, cfg)
-    _draw_chiplet_number(cell, cfg.chiplet_number, cfg)
+    draw_chiplet_number(cell, cfg.chiplet_number, cfg)
 
     # if cfg.draw_verniers:
     #     _add_verniers(cell, cfg)
