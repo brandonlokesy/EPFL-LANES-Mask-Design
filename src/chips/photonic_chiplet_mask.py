@@ -28,6 +28,8 @@ from src.chips.layout_geometry import (
     rectangular_pad_positions,
 )
 from src.utils.text import draw_chiplet_number
+
+from src.utils.text import draw_chiplet_number
 from src.components.photonics.technology import LAYER, _l
 from src.components.photonics.rings import RingConfig, from_config as ring_from_config, make_ring_sweep
 from src.components.photonics.gratings import GratingConfig, from_config as grating_from_config, make_gc_sweep
