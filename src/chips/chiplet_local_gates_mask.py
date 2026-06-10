@@ -27,8 +27,9 @@ class LocalGatesChipletConfig(ChipletConfig):
     local_gate_sq_number:            int   = 9      # gates per side of the square array
     local_gate_min_dim:              float = 30.0   # um
     local_gate_max_dim:              float = 70.0   # um
-    local_gate_contact_length:       float = 10.0   # um
+    local_gate_contact_length:       float = 30.0   # um
     local_gate_contact_width:        float = 5.0   # um
+    local_gate_contact_offset_left:  float = 5.0   # um
     local_gate_array_margin:         float = 250.0  # um
     local_gate_array_spacing:        float = 1000.0 # um
 
@@ -61,6 +62,10 @@ def _draw_local_gate(cell: gdstk.Cell,
         (cx - width/2,  cy + height/2),
         (cx + width/2,  cy + height/2),
         (cx + width/2,  cy - height/2),
+        (cx + width/2 - cfg.local_gate_contact_offset_left,  cy - height/2),
+        (cx + width/2 - cfg.local_gate_contact_offset_left,  cy - height/2 - cfg.local_gate_contact_length),
+        (cx + width/2 - cfg.local_gate_contact_offset_left - cfg.local_gate_contact_width,  cy - height/2 - cfg.local_gate_contact_length),
+        (cx + width/2 - cfg.local_gate_contact_offset_left - cfg.local_gate_contact_width,  cy - height/2),
     ]
 
     cell.add(gdstk.Polygon(vtx, **LAYERS["local_gates"]))
