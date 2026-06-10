@@ -25,10 +25,10 @@ from src.config.paths import STANDARD_DIR
 @dataclass
 class LocalGatesChipletConfig(ChipletConfig):
     local_gate_sq_number:            int   = 7      # gates per side of the square array
+    local_gate_min_dim:              float = 30.0   # um
+    local_gate_max_dim:              float = 60.0   # um
+    local_gate_contact_length:       float = 10.0   # um
     local_gate_contact_width:        float = 5.0   # um
-    local_gate_min_height:           float = 30.0   # um
-    local_gate_max_height:           float = 60.0   # um
-    local_gate_min_height_clearance: float = 30.0   # um
     local_gate_array_margin:         float = 250.0  # um
     local_gate_array_spacing:        float = 1000.0 # um
 
@@ -50,24 +50,17 @@ def _draw_local_gate(cell: gdstk.Cell,
     Draws a single T-shaped local gate electrode centred on (cx, cy).
     Width varies with row_idx, height varies with col_idx.
     """
-    dims   = np.linspace(cfg.local_gate_min_height,
-                         cfg.local_gate_max_height,
+    dims   = np.linspace(cfg.local_gate_min_dim,
+                         cfg.local_gate_max_dim,
                          cfg.local_gate_sq_number)
     width  = dims[row_idx]
     height = dims[col_idx]
 
-    full_width  = width  + cfg.local_gate_contact_width
-    full_height = height + cfg.local_gate_min_height_clearance
-
-    cw = cfg.local_gate_contact_width
-
     vtx = [
-        (full_width/2 - cw - width + cx,  full_height/2 + cy),
-        (full_width/2 - cw - width + cx,  full_height/2 - height + cy),
-        (full_width/2 - cw + cx,          -full_height/2 + cfg.local_gate_min_height_clearance + cy),
-        (full_width/2 - cw + cx,          -full_height/2 + cy),
-        (full_width/2 + cx,               -full_height/2 + cy),
-        (full_width/2 + cx,                full_height/2 + cy),
+        (cx - width/2,  cy - height/2),
+        (cx + width/2,  cy - height/2),
+        (cx + width/2,  cy + height/2),
+        (cx - width/2,  cy + height/2),
     ]
 
     cell.add(gdstk.Polygon(vtx, **LAYERS["local_gates"]))
