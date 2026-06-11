@@ -28,8 +28,6 @@ from src.chips.layout_geometry import (
     rectangular_pad_positions,
 )
 from src.utils.text import draw_chiplet_number
-
-from src.utils.text import draw_chiplet_number
 from src.components.photonics.technology import LAYER, _l
 from src.components.photonics.rings import RingConfig, from_config as ring_from_config, make_ring_sweep
 from src.components.photonics.gratings import GratingConfig, from_config as grating_from_config, make_gc_sweep
@@ -228,11 +226,59 @@ def _add_rectangular_pad_array(c: gf.Component, cfg: PhotonicChipletConfig) -> N
         c.add_ref(h_pad).move(pos)
 
 
+def _chiplet_number_component(number: int, cfg) -> gf.Component:
+    """Adapter: renders the gdstk chiplet-number label into a gf.Component."""
+    tmp_cell = gdstk.Library().new_cell("_tmp")
+    draw_chiplet_number(tmp_cell, number, cfg)
+    c = gf.Component()
+    for poly in tmp_cell.polygons:
+        c.add_polygon(poly.points, layer=_l("chiplet_id"))
+    return c
+
+@gf.cell
+def pulley_with_leads(
+    radius: float = 10.0,
+    ring_width: float = 0.2,
+    gap: float = 0.2,
+    coupling_angle: float = 5.0,
+    wg_length: float = 75.0,
+    wg_height: float = 4.0,
+    lead_length: float = 50.0,
+    n_segments: int = 128,
+    cross_section: str = "strip",
+) -> gf.Component:
+    c = gf.Component()
+
+    pulley = c << gf.components.coupler_pulley(
+        radius=radius,
+        ring_width=ring_width,
+        gap=gap,
+        coupling_angle=coupling_angle,
+        wg_length=wg_length,
+        wg_height=wg_height,
+        n_segments=n_segments,
+        cross_section=cross_section,
+        layer=LAYERS["ring"]["layer"],
+    )
+
+    lead = gf.components.straight(length=lead_length, cross_section=cross_section)
+
+    left_lead = c << lead
+    left_lead.connect("o2", pulley.ports["o1"])
+
+    right_lead = c << lead
+    right_lead.connect("o1", pulley.ports["o2"])
+
+    c.add_port("o1", port=left_lead.ports["o1"])
+    c.add_port("o2", port=right_lead.ports["o2"])
+
+    return c
+
 def build_photonic_chiplet_mask(
     cfg: PhotonicChipletConfig,
     cell_name = "PHOTONIC_CHIPLET",
 ):
-    c = gf.Component()
+    c = gf.Component(cell_name)
     
     if cfg.draw_boundary:
         bg = c << gf.components.rectangle(size=(cfg.chip_width, cfg.chip_height), layer=LAYERS["chip_boundary"]["layer"], centered=True)
@@ -244,10 +290,23 @@ def build_photonic_chiplet_mask(
     _add_corner_markers(c, cfg)
     _add_big_pads(c, cfg)
     _add_rectangular_pad_array(c, cfg)
+    c.add_ref(_chiplet_number_component(cfg.chiplet_number, cfg))
+
+    c.add_ref(gf.components.coupler_pulley(radius = 10.0, ring_width = 0.2, gap = 0.2, coupling_angle = 5, wg_length = 75, wg_height = 4, n_segments=128, cross_section='strip', layer=LAYERS["ring"]["layer"])).move((0, 0))
+    c.add_ref(pulley_with_leads()).move((0, 0))
 
     return c
 
 if "__main__" == __name__:
     cfg = PhotonicChipletConfig()
     c = build_photonic_chiplet_mask(cfg)
+    EXPERIMENTAL_DIR.mkdir(parents=True, exist_ok=True)
+    # stem     = "chiplet_test_EDIT" if args.edit else f"chiplet_test_{cfg.chiplet_id:03d}"
+    stem = "photonic_chiplet_test"
+    gds_path = EXPERIMENTAL_DIR / f"{stem}.gds"
+    cfg_path = EXPERIMENTAL_DIR / f"{stem}.json"
+    c.write_gds(gds_path)
+    cfg.save(cfg_path)
+    print(f"GDS  → {gds_path}")
+    print(f"JSON → {cfg_path}")
     c.show()
