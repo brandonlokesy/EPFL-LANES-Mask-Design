@@ -102,6 +102,7 @@ PDK = gf.Pdk(
         "xs_ring": xs_ring,
     },
     cells=_generic.cells,           # inherit all generic component factories
+    layers=_generic.layers,         # required by gdsfactory ≥ 9.42 get_layer_name
 )
 
 PDK.activate()
