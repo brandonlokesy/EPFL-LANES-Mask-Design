@@ -115,6 +115,11 @@ class PhotonicChipletConfig:
     pulley_ring_width :   float = 0.5
     pulley_n_segments:    int   = 2048    # high value closes the polygon gap in coupler_pulley
 
+    # ── Pulley array (3×3 dose test) ──────────────────────────────────────
+    pulley_array_col_pitch:  float = 300.0   # µm — tune after checking device bbox
+    pulley_array_row_pitch:  float = 500.0   # µm — tune after checking device bbox
+    pulley_array_label_size: float = 15.0    # µm text height
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -261,7 +266,8 @@ def build_photonic_chiplet_mask(
     bends_settings_dict = dict(
         dict(angle = 180, radius = 30)
     )
-    c.add_ref(pulley_with_leads(
+    # Build device once — @gf.cell caches it, all 9 placements share the same master cell
+    device = pulley_with_leads(
         pulley=dict(
             component="coupler_pulley",
             settings=dict(
@@ -277,16 +283,33 @@ def build_photonic_chiplet_mask(
             ),
         ),
         extend_ports_length=cfg.pulley_extend_leads,
-        bends = {
-            "o1" : dict(component = "bend_euler", settings = bends_settings_dict),
-            "o2" : dict(component = "bend_euler", settings = bends_settings_dict)
+        bends={
+            "o1": dict(component="bend_euler", settings=bends_settings_dict),
+            "o2": dict(component="bend_euler", settings=bends_settings_dict),
         },
-        terminations = {
-            "o1" : dict(component = "grating_coupler_elliptical", settings = grating_coupler_settings_dict),
-            "o2" : dict(component = "grating_coupler_elliptical", settings = grating_coupler_settings_dict)
+        terminations={
+            "o1": dict(component="grating_coupler_elliptical", settings=grating_coupler_settings_dict),
+            "o2": dict(component="grating_coupler_elliptical", settings=grating_coupler_settings_dict),
         },
         cross_section=xs,
-    )).move((0, 0))
+    )
+
+    # y of label anchor: just below device bottom edge
+    label_y_offset = device.bbox().bottom - cfg.pulley_array_label_size
+
+    for row in range(3):
+        for col in range(3):
+            x = (col - 1) * cfg.pulley_array_col_pitch
+            y = (row - 1) * cfg.pulley_array_row_pitch
+
+            (c << device).move((x, y))
+
+            lbl = c << gf.components.text(
+                text=f"R{row}C{col}",
+                size=cfg.pulley_array_label_size,
+                layer=LAYER.NOTES,
+            )
+            lbl.move((x, y + label_y_offset))
 
     return c
 
