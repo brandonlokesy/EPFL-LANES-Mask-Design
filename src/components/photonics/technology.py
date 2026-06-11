@@ -22,4 +22,14 @@ class LAYER:
     NOTES            = _l("notes")
 
 
-XS_SIN = gf.cross_section.strip(width=0.8, layer=LAYER.WG_CORE)
+XS_SIN      = gf.cross_section.strip(width=0.8,  layer=LAYER.WG_CORE)  # SiN @ 1550 nm
+XS_SIN_VIS  = gf.cross_section.strip(width=0.5,  layer=LAYER.WG_CORE)  # SiN @ 780 nm
+XS_LNOI     = gf.cross_section.strip(width=0.9,  layer=LAYER.WG_CORE)  # LNOI @ 1550 nm
+XS_BTO      = gf.cross_section.strip(width=0.7,  layer=LAYER.WG_CORE)  # BTO @ 1550 nm
+
+CROSS_SECTIONS: dict = {
+    "SIN":     XS_SIN,
+    "SIN_VIS": XS_SIN_VIS,
+    "LNOI":    XS_LNOI,
+    "BTO":     XS_BTO,
+}

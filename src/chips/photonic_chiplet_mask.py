@@ -28,7 +28,7 @@ from src.chips.layout_geometry import (
     rectangular_pad_positions,
 )
 from src.utils.text import draw_chiplet_number
-from src.components.photonics.technology import LAYER, XS_SIN, _l
+from src.components.photonics.technology import LAYER, CROSS_SECTIONS, _l
 from src.components.photonics.pulley import pulley_with_leads
 
 
@@ -82,8 +82,8 @@ class PhotonicChipletConfig:
     draw_boundary:  bool = True
     draw_active_area: bool = True
 
-    # ── Global waveguide width ─────────────────────────────────────────────
-    wg_width:       float = 0.8     # µm
+    # ── Process / cross-section ────────────────────────────────────────────
+    cross_section:  str   = "SIN_VIS"   # key into technology.CROSS_SECTIONS
 
     # ── Photonic device layout ─────────────────────────────────────────────
     row_spacing:    float = 200.0   # µm between bottom of one row and top of next
@@ -105,27 +105,15 @@ class PhotonicChipletConfig:
     rt_gap:         float = 0.15
     rt_spacing:     float = 70.0
 
-    # ── Row D: MMI-MZI (delta_length sweep) ───────────────────────────────
-    mmi_dls:        list = field(default_factory=lambda: [10.0, 25.0, 50.0, 100.0])
-    mmi_spacing:    float = 120.0
-
-    # ── Row E: DC-MZI (delta_length sweep) ────────────────────────────────
-    dc_dls:         list = field(default_factory=lambda: [10.0, 50.0])
-    dc_gap:         float = 0.20
-    dc_cl:          float = 10.0
-    dc_spacing:     float = 130.0
-
-    # ── Row F: elliptical GC (neff sweep) ─────────────────────────────────
-    gc_e_neff:      list = field(default_factory=lambda: [1.75, 1.85, 1.95])
-    gc_e_nclad:     float = 1.443
-    gc_e_wl:        float = 1.55
-    gc_e_angle:     float = 10.0
-    gc_e_spacing:   float = 60.0
-
-    # ── Row G: rectangular GC (period sweep) ──────────────────────────────
-    gc_r_periods:   list = field(default_factory=lambda: [0.88, 0.97, 1.05])
-    gc_r_ff:        float = 0.5
-    gc_r_spacing:   float = 250.0
+    # ── Row H: pulley coupler ──────────────────────────────────────────────
+    pulley_radius:        float = 5.0
+    pulley_gap:           float = 0.3
+    pulley_coupling_angle: float = 20.0   # degrees → controls coupling length
+    pulley_extend_leads:  float = 10.0
+    pulley_wg_length :    float = 75.0
+    pulley_wg_height :    float = 1.0
+    pulley_ring_width :   float = 0.5
+    pulley_n_segments:    int   = 2048    # high value closes the polygon gap in coupler_pulley
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -254,7 +242,51 @@ def build_photonic_chiplet_mask(
     _add_rectangular_pad_array(c, cfg)
     c.add_ref(_chiplet_number_component(cfg.chiplet_number, cfg))
 
-    c.add_ref(pulley_with_leads()).move((0, 0))
+    xs = CROSS_SECTIONS[cfg.cross_section]
+
+    grating_coupler_settings_dict = dict(
+        polarization="te",
+        wavelength=0.75,          # µm, not nm
+        fiber_angle=20.0,         # degrees from normal
+        neff=1.6,                 # SiN @ 750 nm — tune from simulation
+        nclad=1.46,               # SiO2 @ 750 nm (slightly higher than 1550 nm value)
+        grating_line_width=0.18,  # ~half the period for 50% duty cycle
+        taper_length=20.0,
+        taper_angle=40.0,         # flare angle — wider = easier fiber alignment
+        n_periods=30,
+        layer_slab=None,          # set to None unless you have a slab etch layer
+        cross_section=xs,
+    )
+
+    bends_settings_dict = dict(
+        dict(angle = 180, radius = 30)
+    )
+    c.add_ref(pulley_with_leads(
+        pulley=dict(
+            component="coupler_pulley",
+            settings=dict(
+                radius=cfg.pulley_radius,
+                gap=cfg.pulley_gap,
+                coupling_angle=cfg.pulley_coupling_angle,
+                wg_length=cfg.pulley_wg_length,
+                wg_height=cfg.pulley_wg_height,
+                ring_width=cfg.pulley_ring_width,
+                n_segments=cfg.pulley_n_segments,
+                cross_section=xs,
+                layer=LAYER.RING,
+            ),
+        ),
+        extend_ports_length=cfg.pulley_extend_leads,
+        bends = {
+            "o1" : dict(component = "bend_euler", settings = bends_settings_dict),
+            "o2" : dict(component = "bend_euler", settings = bends_settings_dict)
+        },
+        terminations = {
+            "o1" : dict(component = "grating_coupler_elliptical", settings = grating_coupler_settings_dict),
+            "o2" : dict(component = "grating_coupler_elliptical", settings = grating_coupler_settings_dict)
+        },
+        cross_section=xs,
+    )).move((0, 0))
 
     return c
 
