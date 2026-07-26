@@ -42,6 +42,46 @@
             "env": {"PYTHONPATH": "${workspaceFolder}"}
         },
         {
+            "name": "Wafer Photonic — Edit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/assembly/photonic_wafer_mask.py",
+            "args": ["--edit"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Wafer Photonic — Production",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/assembly/photonic_wafer_mask.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Chiplet Photonic — Edit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/chips/photonic_chiplet_mask.py",
+            "args": ["--edit"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Chiplet Photonic — Production",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/chips/photonic_chiplet_mask.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
             "name": "Chiplet — Edit",
             "type": "debugpy",
             "request": "launch",

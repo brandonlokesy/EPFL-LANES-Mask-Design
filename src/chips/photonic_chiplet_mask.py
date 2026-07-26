@@ -297,33 +297,39 @@ def build_photonic_chiplet_mask(
     # y of label anchor: just below device bottom edge
     label_y_offset = device.bbox().bottom - cfg.pulley_array_label_size
 
-    for row in range(3):
-        for col in range(3):
-            x = (col - 1) * cfg.pulley_array_col_pitch
-            y = (row - 1) * cfg.pulley_array_row_pitch
+    # for row in range(3):
+    #     for col in range(3):
+    #         x = (col - 1) * cfg.pulley_array_col_pitch
+    #         y = (row - 1) * cfg.pulley_array_row_pitch
 
-            (c << device).move((x, y))
+    #         (c << device).move((x, y))
 
-            lbl = c << gf.components.text(
-                text=f"R{row}C{col}",
-                size=cfg.pulley_array_label_size,
-                layer=LAYER.NOTES,
-            )
-            lbl.move((x, y + label_y_offset))
+    #         lbl = c << gf.components.text(
+    #             text=f"R{row}C{col}",
+    #             size=cfg.pulley_array_label_size,
+    #             layer=LAYER.NOTES,
+    #         )
+    #         lbl.move((x, y + label_y_offset))
 
     return c
 
 if "__main__" == __name__:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Build a standalone photonic chiplet mask.")
+    parser.add_argument("--edit", action="store_true",
+                        help="Edit mode — writes a fixed filename for iteration.")
+    args = parser.parse_args()
+
     gf.gpdk.PDK.activate()
     cfg = PhotonicChipletConfig()
     c = build_photonic_chiplet_mask(cfg)
     EXPERIMENTAL_DIR.mkdir(parents=True, exist_ok=True)
-    # stem     = "chiplet_test_EDIT" if args.edit else f"chiplet_test_{cfg.chiplet_id:03d}"
-    stem = "photonic_chiplet_test"
+    stem = "photonic_chiplet_EDIT" if args.edit else f"photonic_chiplet_{cfg.chiplet_number:03d}"
     gds_path = EXPERIMENTAL_DIR / f"{stem}.gds"
     cfg_path = EXPERIMENTAL_DIR / f"{stem}.json"
     c.write_gds(gds_path)
     cfg.save(cfg_path)
-    print(f"GDS  → {gds_path}")
-    print(f"JSON → {cfg_path}")
+    print(f"GDS  -> {gds_path}")
+    print(f"JSON -> {cfg_path}")
     c.show()

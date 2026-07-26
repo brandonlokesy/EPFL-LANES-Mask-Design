@@ -108,6 +108,12 @@ class WaferConfig:
     wafer_small_label_ypos: float = -40500.0
     wafer_small_label_size: float =    600.0
 
+    # --- Per-chiplet wafer-ID stamp (bottom-right margin band) ---
+    stamp_chiplet_id:         bool  = True
+    stamp_size:               float =  200.0   # char height, um
+    stamp_margin_from_right:  float = 2200.0   # text right edge, um inward from chip right edge
+    stamp_margin_from_bottom: float =  1500.0   # text baseline, um up from chip bottom edge
+
     # --- Chiplet config (nested) ---
     chiplet: ChipletConfig = field(default_factory=ChipletConfig)
 
@@ -329,6 +335,45 @@ def _draw_wafer_label(cell: gdstk.Cell,
                     layer=layer)
 
 
+def _stamp_chiplet_ids(cell: gdstk.Cell,
+                       cfg: WaferConfig,
+                       wafer_ID_str: str) -> None:
+    """
+    Imprints the wafer ID (same string for the whole wafer) in the bottom-right
+    margin band of every chiplet, outside the active area.
+
+    The text is right-aligned: its right edge sits `stamp_margin_from_right`
+    inward from each chip's right edge, and its baseline sits
+    `stamp_margin_from_bottom` up from each chip's bottom edge. Rendered per
+    chiplet position so each die physically carries the wafer ID.
+    """
+    if not wafer_ID_str:
+        return
+
+    chip_w = cfg.chiplet.chip_width
+    chip_h = cfg.chiplet.chip_height
+    hw, hh = chip_w / 2, chip_h / 2
+
+    size  = cfg.stamp_size
+    scale = size / 1000.0
+
+    # Right-aligned: compute rendered width the same way _draw_wafer_label does.
+    line_width = sum(
+        (_width.get(ord(c), 500) + _indent.get(ord(c), 0)) * scale
+        for c in wafer_ID_str if c != " "
+    ) + sum(500 * scale for c in wafer_ID_str if c == " ")
+
+    layer = LAYERS["wafer_id"]
+
+    for x_centre, y_centre, _ in _compute_chip_positions(cfg.row_config, chip_w, chip_h):
+        right_edge = x_centre + hw - cfg.stamp_margin_from_right
+        baseline_y = y_centre - hh + cfg.stamp_margin_from_bottom
+        deplof_text(cell, wafer_ID_str,
+                    size=size,
+                    origin=(right_edge - line_width, baseline_y),
+                    layer=layer)
+
+
 # =============================================================================
 # PUBLIC API
 # =============================================================================
@@ -381,6 +426,10 @@ def build_wafer_mask(lib: gdstk.Library,
         existing   = next((c for c in lib.cells if c.name == chip_cell_name), None)
         chip_cell  = existing or chiplet_builder(lib, chip_cfg, cell_name=chip_cell_name)
         wafer_cell.add(gdstk.Reference(chip_cell, origin=(x_centre, y_centre)))
+
+    # Per-chiplet wafer-ID stamp
+    if cfg.stamp_chiplet_id:
+        _stamp_chiplet_ids(wafer_cell, cfg, wafer_ID_str)
 
     # Wafer-level features
     _add_dicing_lanes(lib, wafer_cell, cfg)
