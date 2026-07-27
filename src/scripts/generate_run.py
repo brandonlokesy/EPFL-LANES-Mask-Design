@@ -11,7 +11,7 @@ Prompts you for:
 Each wafer gets its own numbered GDS + JSON pair written to masks/standard/.
 
 Usage:
-    python src/scripts/generate_run.py
+    python -m src.scripts.generate_run
 """
 
 import gdstk
@@ -21,6 +21,8 @@ from src.chips.chiplet_mask import ChipletConfig
 from src.chips.chiplet_local_gates_mask import LocalGatesChipletConfig
 from src.assembly.wafer_mask import WaferConfig, build_wafer_mask
 from src.assembly.wafer_local_gates_mask import LocalGatesWaferConfig, build_local_gates_wafer_mask
+from src.assembly.photonic_wafer_mask import PhotonicWaferConfig, build_photonic_wafer_mask
+from src.chips.photonic_chiplet_mask import PhotonicChipletConfig
 
 
 # =============================================================================
@@ -94,13 +96,31 @@ def _build_local_gates_wafer(run_num: int, wafer_num: int) -> tuple[str, LocalGa
     return stem, wafer_cfg
 
 
+def _build_photonic_wafer(run_num: int, wafer_num: int) -> tuple[str, PhotonicWaferConfig]:
+    stem      = f"STD-PH-R{run_num:02d}-W{wafer_num:02d}"
+    wafer_cfg = PhotonicWaferConfig(
+        run_number   = run_num,
+        wafer_number = wafer_num,
+        chiplet      = PhotonicChipletConfig(),
+    )
+    lib = gdstk.Library(unit=1e-6, precision=1e-9)
+    build_photonic_wafer_mask(lib, wafer_cfg, wafer_ID_str=stem)
+
+    gds_path = STANDARD_DIR / f"{stem}.gds"
+    cfg_path = STANDARD_DIR / f"{stem}.json"
+    lib.write_gds(gds_path)
+    wafer_cfg.save(cfg_path)
+    return stem, wafer_cfg
+
+
 # =============================================================================
 # MAIN
 # =============================================================================
 
 MASK_TYPES = {
-    "std": ("STD", _build_standard_wafer),
-    "lg":  ("LG",  _build_local_gates_wafer),
+    "std": ("STD",     _build_standard_wafer),
+    "lg":  ("LG",      _build_local_gates_wafer),
+    "ph":  ("PHOTONIC", _build_photonic_wafer),
 }
 
 def main():
@@ -114,8 +134,14 @@ def main():
     print("Mask type:")
     print("  std — Standard wafer")
     print("  lg  — Local gates wafer")
-    mask_choice = _prompt_choice("Select mask type", ["std", "lg"])
+    print("  ph  — Photonic wafer")
+    mask_choice = _prompt_choice("Select mask type", ["std", "lg", "ph"])
     registry_key, builder = MASK_TYPES[mask_choice]
+
+    # The photonic chiplet is built with gdsfactory and needs its PDK active.
+    if mask_choice == "ph":
+        import gdsfactory as gf
+        gf.gpdk.PDK.activate()
 
     # ── Step 2: run number ─────────────────────────────────────────────────────
     current = _current_run(registry_key)
@@ -135,17 +161,16 @@ def main():
     n_wafers = _prompt_int("How many wafers to generate?", min_val=1, max_val=99)
 
     # ── Step 4: confirm ────────────────────────────────────────────────────────
-    suffix = "-LG" if mask_choice == "lg" else ""
-    preview_start = _current_run(registry_key)  # wafers not yet incremented
+    mask_label = {"std": "Standard", "lg": "Local Gates", "ph": "Photonic"}[mask_choice]
     print()
     print("Summary:")
-    print(f"  Mask type : {'Local Gates' if mask_choice == 'lg' else 'Standard'}")
+    print(f"  Mask type : {mask_label}")
     print(f"  Run       : R{run_num:02d}")
     print(f"  Wafers    : {n_wafers}")
     print(f"  Output    : {STANDARD_DIR}")
     print()
-    confirm = _prompt_choice("Generate wafers?", ["yes", "no"])
-    if confirm != "yes":
+    confirm = _prompt_choice("Generate wafers?", ["y", "n"])
+    if confirm != "y":
         print("Aborted.")
         return
 

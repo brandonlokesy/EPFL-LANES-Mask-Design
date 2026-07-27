@@ -132,10 +132,10 @@ if __name__ == "__main__":
 
     if args.edit:
         run_num, wafer_num = 99, 99
-        stem = "PH-EDIT-MODE"
+        stem = "STD-PH-EDIT-MODE"
     else:
         run_num, wafer_num = next_wafer("PHOTONIC")
-        stem = f"PH-R{run_num:02d}-W{wafer_num:02d}"
+        stem = f"STD-PH-R{run_num:02d}-W{wafer_num:02d}"
 
     wafer_cfg = PhotonicWaferConfig(
         run_number   = run_num,
