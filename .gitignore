@@ -10,6 +10,9 @@ __pycache__/
 masks/standard/*.gds
 masks/standard/*.json
 masks/experimental/**
+
+!masks/standard/STD-LANES*.gds
+!masks/standard/STD-LANES*.json
 src/config/user_config.py
 
 # Each user has their own registry

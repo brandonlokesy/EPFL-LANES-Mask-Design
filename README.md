@@ -159,6 +159,34 @@ This writes e.g. `masks/standard/STD-R01-W01.gds` and permanently increments the
 
 > **Important:** Only run without `--edit` when you are ready to commit to a real lithography run. Run numbers cannot be decremented automatically.
 
+### Also write a single chip alongside the wafer
+
+Add `--chip` to any wafer build to write a second GDS + JSON pair containing exactly one
+die, extracted from the wafer that was just built:
+
+```bash
+python src/assembly/wafer_mask.py --edit --chip
+```
+
+This writes `STD-EDIT-MODE-CHIP.gds` next to `STD-EDIT-MODE.gds`. The suffix is appended to
+whatever the wafer stem is, so you also get `STD-R01-W01-LG-CHIP.gds` and
+`STD-PH-R01-W01-CHIP.gds` from the local-gates and photonic entry points.
+
+The die is taken from the wafer library rather than rebuilt, so it is the same geometry by
+construction. The wafer-ID stamp is re-drawn into it — that text lives on the wafer cell,
+not inside the chiplet cells, so a chiplet extracted verbatim would not carry it.
+
+Chips on a wafer are **not** interchangeable: each carries its own block-letter chiplet
+number. `--chip` exports chiplet `00` (the bottom-left die); pass a number to choose
+another, using the same 0-based left-to-right, bottom-to-top numbering as the wafer:
+
+```bash
+python src/assembly/photonic_wafer_mask.py --edit --chip 7
+```
+
+The chip's `.json` sidecar is the chiplet config for the die actually exported. Wafer-level
+parameters stay in the sibling wafer `.json`.
+
 ### Generate multiple wafers for a lithography run
 
 Use the interactive batch script:
@@ -168,9 +196,10 @@ python src/scripts/generate_run.py
 ```
 
 This will prompt you to:
-- Choose the mask type (`std` or `lg`)
+- Choose the mask type (`std`, `lg` or `ph`)
 - Start a new run number or continue the current one
 - Enter how many wafers to generate
+- Choose whether to also write a single-chip GDS per wafer
 - Confirm before anything is written
 
 ---

@@ -19,9 +19,18 @@ from src.config.paths import STANDARD_DIR
 from src.config.run_registry import next_wafer, new_run, _load
 from src.chips.chiplet_mask import ChipletConfig
 from src.chips.chiplet_local_gates_mask import LocalGatesChipletConfig
-from src.assembly.wafer_mask import WaferConfig, build_wafer_mask
-from src.assembly.wafer_local_gates_mask import LocalGatesWaferConfig, build_local_gates_wafer_mask
-from src.assembly.photonic_wafer_mask import PhotonicWaferConfig, build_photonic_wafer_mask
+from src.assembly.wafer_mask import (
+    WaferConfig, build_wafer_mask, write_single_chiplet,
+    CHIPLET_PREFIX as STD_CHIPLET_PREFIX,
+)
+from src.assembly.wafer_local_gates_mask import (
+    LocalGatesWaferConfig, build_local_gates_wafer_mask,
+    CHIPLET_PREFIX as LG_CHIPLET_PREFIX,
+)
+from src.assembly.photonic_wafer_mask import (
+    PhotonicWaferConfig, build_photonic_wafer_mask,
+    CHIPLET_PREFIX as PH_CHIPLET_PREFIX,
+)
 from src.chips.photonic_chiplet_mask import PhotonicChipletConfig
 
 
@@ -62,7 +71,8 @@ def _current_run(mask_type: str) -> int:
 # WAFER BUILDERS
 # =============================================================================
 
-def _build_standard_wafer(run_num: int, wafer_num: int) -> tuple[str, WaferConfig]:
+def _build_standard_wafer(run_num: int, wafer_num: int,
+                          single_chip: int | None = None) -> tuple[str, WaferConfig]:
     stem      = f"STD-R{run_num:02d}-W{wafer_num:02d}"
     wafer_cfg = WaferConfig(
         run_number   = run_num,
@@ -76,10 +86,20 @@ def _build_standard_wafer(run_num: int, wafer_num: int) -> tuple[str, WaferConfi
     cfg_path = STANDARD_DIR / f"{stem}.json"
     lib.write_gds(gds_path)
     wafer_cfg.save(cfg_path)
+
+    if single_chip is not None:
+        write_single_chiplet(
+            lib, wafer_cfg, STANDARD_DIR, f"{stem}-CHIP",
+            chiplet_cell_prefix=STD_CHIPLET_PREFIX,
+            wafer_ID_str=stem,
+            chiplet_number=single_chip,
+        )
+
     return stem, wafer_cfg
 
 
-def _build_local_gates_wafer(run_num: int, wafer_num: int) -> tuple[str, LocalGatesWaferConfig]:
+def _build_local_gates_wafer(run_num: int, wafer_num: int,
+                             single_chip: int | None = None) -> tuple[str, LocalGatesWaferConfig]:
     stem      = f"STD-R{run_num:02d}-W{wafer_num:02d}-LG"
     wafer_cfg = LocalGatesWaferConfig(
         run_number   = run_num,
@@ -93,10 +113,20 @@ def _build_local_gates_wafer(run_num: int, wafer_num: int) -> tuple[str, LocalGa
     cfg_path = STANDARD_DIR / f"{stem}.json"
     lib.write_gds(gds_path)
     wafer_cfg.save(cfg_path)
+
+    if single_chip is not None:
+        write_single_chiplet(
+            lib, wafer_cfg, STANDARD_DIR, f"{stem}-CHIP",
+            chiplet_cell_prefix=LG_CHIPLET_PREFIX,
+            wafer_ID_str=stem,
+            chiplet_number=single_chip,
+        )
+
     return stem, wafer_cfg
 
 
-def _build_photonic_wafer(run_num: int, wafer_num: int) -> tuple[str, PhotonicWaferConfig]:
+def _build_photonic_wafer(run_num: int, wafer_num: int,
+                          single_chip: int | None = None) -> tuple[str, PhotonicWaferConfig]:
     stem      = f"STD-PH-R{run_num:02d}-W{wafer_num:02d}"
     wafer_cfg = PhotonicWaferConfig(
         run_number   = run_num,
@@ -110,6 +140,15 @@ def _build_photonic_wafer(run_num: int, wafer_num: int) -> tuple[str, PhotonicWa
     cfg_path = STANDARD_DIR / f"{stem}.json"
     lib.write_gds(gds_path)
     wafer_cfg.save(cfg_path)
+
+    if single_chip is not None:
+        write_single_chiplet(
+            lib, wafer_cfg, STANDARD_DIR, f"{stem}-CHIP",
+            chiplet_cell_prefix=PH_CHIPLET_PREFIX,
+            wafer_ID_str=stem,
+            chiplet_number=single_chip,
+        )
+
     return stem, wafer_cfg
 
 
@@ -160,13 +199,22 @@ def main():
     print()
     n_wafers = _prompt_int("How many wafers to generate?", min_val=1, max_val=99)
 
-    # ── Step 4: confirm ────────────────────────────────────────────────────────
+    # ── Step 4: single-chip output ─────────────────────────────────────────────
+    print()
+    chip_choice = _prompt_choice(
+        "Also write a single-chip GDS per wafer?", ["y", "n"])
+    # Chiplet 0 is the bottom-left die (numbering is left-to-right, bottom-to-top).
+    single_chip = 0 if chip_choice == "y" else None
+
+    # ── Step 5: confirm ────────────────────────────────────────────────────────
     mask_label = {"std": "Standard", "lg": "Local Gates", "ph": "Photonic"}[mask_choice]
     print()
     print("Summary:")
     print(f"  Mask type : {mask_label}")
     print(f"  Run       : R{run_num:02d}")
     print(f"  Wafers    : {n_wafers}")
+    print(f"  Chip      : " + (f"yes — chiplet {single_chip:02d}"
+                               if single_chip is not None else "no"))
     print(f"  Output    : {STANDARD_DIR}")
     print()
     confirm = _prompt_choice("Generate wafers?", ["y", "n"])
@@ -174,7 +222,7 @@ def main():
         print("Aborted.")
         return
 
-    # ── Step 5: generate ───────────────────────────────────────────────────────
+    # ── Step 6: generate ───────────────────────────────────────────────────────
     STANDARD_DIR.mkdir(parents=True, exist_ok=True)
     print()
 
@@ -182,11 +230,11 @@ def main():
     for i in range(n_wafers):
         _, wafer_num = next_wafer(registry_key, run=run_num)
         print(f"  [{i+1}/{n_wafers}] Building wafer {wafer_num:02d}...", end=" ", flush=True)
-        stem, cfg = builder(run_num, wafer_num)
+        stem, cfg = builder(run_num, wafer_num, single_chip)
         generated.append((stem, cfg))
         print(f"done  →  {stem}.gds")
 
-    # ── Step 6: summary ────────────────────────────────────────────────────────
+    # ── Step 7: summary ────────────────────────────────────────────────────────
     print()
     print("=" * 52)
     print(f"  Done — {n_wafers} wafer(s) written to:")
@@ -199,6 +247,9 @@ def main():
         total  = sum(cfg.row_config)
         print(f"    {stem}.gds   "
               f"({total} chips, {chip_w:.1f}×{chip_h:.1f} mm)")
+        if single_chip is not None:
+            print(f"    {stem}-CHIP.gds   "
+                  f"(1 chip, {chip_w:.1f}×{chip_h:.1f} mm)")
     print("=" * 52)
     print()
 
