@@ -214,7 +214,7 @@ def verify_cell(layout: kdb.Layout,
                f"(extent {mm2(extent):.3f} mm2)")
 
     if verbose or not ok:
-        print(f"  cell {cell.name} — {len(tiers)} tiers")
+        print(f"  cell {cell.name} - {len(tiers)} tiers")
         print(f"  {'check':<46}{'residual':>12} {'thickest':>9}  result")
         print("  " + "-" * 80)
         print("\n".join(out))
@@ -241,7 +241,7 @@ def verify(gds_path: str, noise_floor_nm: float = NOISE_FLOOR_NM) -> bool:
 
     print(f"{gds_path}")
     if not cells:
-        print("  no inverse-tone geometry found — built without --invert?\n")
+        print("  no inverse-tone geometry found - built without --invert?\n")
         return False
 
     verbose = len(cells) == 1
@@ -255,7 +255,7 @@ def verify(gds_path: str, noise_floor_nm: float = NOISE_FLOOR_NM) -> bool:
               f"{len(cells) - len(failed)} pass, {len(failed)} fail")
         if failed:
             print(f"  failing: {', '.join(failed[:8])}"
-                  f"{' …' if len(failed) > 8 else ''}")
+                  f"{' ...' if len(failed) > 8 else ''}")
     print("  ALL CHECKS PASS" if not failed else "  SOME CHECKS FAILED")
     print()
     return not failed

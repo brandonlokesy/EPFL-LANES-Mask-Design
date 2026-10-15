@@ -15,6 +15,7 @@ Layer numbering scheme
  50 - 59   Dielectric
  60 - 69   Contacts and vias
  70 - 79   Metal
+ 80 - 89   Inverse-tone exposure tiers
  90 - 99   Test structures
 100 - 109  Do not fabricate    (keep-out, dicing streets, write fields)
 
@@ -58,6 +59,20 @@ LAYERS = {
     "heater":               {"layer": 44, "datatype": 0},   # TiN thermo-optic heater
     "metal_contact":        {"layer": 45, "datatype": 0},   # contacts to heater
 
+    # ── INVERSE-TONE EXPOSURE TIERS ──────────────────────────────────
+    # One SiN etch, fractured across tiers so the EBPG can assign a different
+    # spot size / beam current to each. inv_t1 is the finest. See
+    # src/components/photonics/inverse_tone.py
+    "inv_coarse":           {"layer": 80, "datatype": 0},   # bulk fill, largest spot
+    "inv_t1":               {"layer": 81, "datatype": 0},
+    "inv_t2":               {"layer": 82, "datatype": 0},
+    "inv_t3":               {"layer": 83, "datatype": 0},
+    "inv_t4":               {"layer": 84, "datatype": 0},
+    "inv_t5":               {"layer": 85, "datatype": 0},
+    "inv_t6":               {"layer": 86, "datatype": 0},
+    "inv_t7":               {"layer": 87, "datatype": 0},
+    "inv_t8":               {"layer": 88, "datatype": 0},
+
     # ── DIELECTRIC ────────────────────────────────────────────────────────────
     "dielectric":           {"layer": 50, "datatype": 0},
     "dielectric_etch":      {"layer": 51, "datatype": 0},
@@ -84,4 +99,5 @@ LAYERS = {
     "keepout":              {"layer": 100, "datatype": 0},
     "dicing":               {"layer": 101, "datatype": 0},
     "write_field":          {"layer": 102, "datatype": 0},
+    "inv_frame":            {"layer": 103, "datatype": 0},   # inverse-tone tier outlines
 }

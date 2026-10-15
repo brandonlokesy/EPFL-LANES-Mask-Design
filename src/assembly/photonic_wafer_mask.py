@@ -35,7 +35,15 @@ from src.chips.photonic_chiplet_mask import (
     PhotonicChipletConfig,
     build_photonic_chiplet_mask,
 )
+from src.components.photonics.inverse_tone import (
+    ZONES_PER_SITE,
+    ZONES_PER_FEATURE,
+    ZONES_COLLAR,
+)
 from src.config.run_registry import next_wafer
+
+
+CHIPLET_PREFIX = "CHIPLET_PH"
 
 
 # =============================================================================
@@ -108,7 +116,7 @@ def build_photonic_wafer_mask(lib: gdstk.Library,
         lib, cfg,
         cell_name=cell_name,
         chiplet_builder=_photonic_chiplet_builder,
-        chiplet_cell_prefix="CHIPLET_PH",
+        chiplet_cell_prefix=CHIPLET_PREFIX,
         wafer_ID_str=wafer_ID_str,
     )
 
@@ -125,7 +133,25 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Build a photonic wafer mask.")
     parser.add_argument("--edit", action="store_true",
-                        help="Edit mode — does not consume a run number.")
+                        help="Edit mode - does not consume a run number.")
+    parser.add_argument("--chip", nargs="?", const=0, type=int, default=None,
+                        metavar="N",
+                        help="Also write a single-chip GDS alongside the wafer. "
+                             "Optionally give the chiplet number to export "
+                             "(0-based, default 0 = bottom-left die).")
+    parser.add_argument("--invert", action="store_true",
+                        help="Build the two-tier inverse-tone (negative) exposure "
+                             "layers on every chiplet.")
+    parser.add_argument("--invert-extent", choices=("chip", "active_area"),
+                        default="chip",
+                        help="Outer extent of the coarse tier (default: chip).")
+    parser.add_argument("--invert-zones", choices=("site", "feature", "collar"),
+                        default="site",
+                        help="Tiering: 'site' = one fine tier per device "
+                             "(default); 'feature' = separate tiers for grating "
+                             "couplers, ring, routing and text; 'collar' = a "
+                             "ribbon hugging the pattern (least fine area, needs "
+                             "proximity correction).")
     args = parser.parse_args()
 
     gf.gpdk.PDK.activate()
@@ -140,7 +166,14 @@ if __name__ == "__main__":
     wafer_cfg = PhotonicWaferConfig(
         run_number   = run_num,
         wafer_number = wafer_num,
-        chiplet      = PhotonicChipletConfig(),
+        chiplet      = PhotonicChipletConfig(
+            invert_tone          = args.invert,
+            invert_coarse_extent = args.invert_extent,
+            invert_zones         = list(
+                {"site": ZONES_PER_SITE, "feature": ZONES_PER_FEATURE,
+                 "collar": ZONES_COLLAR}[args.invert_zones]
+            ),
+        ),
     )
 
     STANDARD_DIR.mkdir(parents=True, exist_ok=True)
@@ -162,3 +195,14 @@ if __name__ == "__main__":
     print(f"  Total chips:     {sum(wafer_cfg.row_config)}")
     print(f"  Chip size:       {wafer_cfg.chiplet.chip_width/1000:.1f} x "
           f"{wafer_cfg.chiplet.chip_height/1000:.1f} mm")
+
+    if args.chip is not None:
+        chip_gds, chip_json = wm.write_single_chiplet(
+            lib, wafer_cfg, STANDARD_DIR, f"{stem}-CHIP",
+            chiplet_cell_prefix=CHIPLET_PREFIX,
+            wafer_ID_str=stem,
+            chiplet_number=args.chip,
+        )
+        print(f"Written: {chip_gds}")
+        print(f"Written: {chip_json}")
+        print(f"  Single chip:     chiplet {args.chip:02d}")

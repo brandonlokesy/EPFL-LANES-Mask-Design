@@ -1,55 +1,45 @@
 """
 inverse_tone.py
-===============
-Inverse-tone ("negative") exposure geometry, fractured into tiers.
 
-The problem
------------
-Etching everything *except* the rings and waveguides means exposing essentially
-the whole chip. At a fine beam current that is a multi-hour write::
+Inverse-tone exposure: expose the whole chip except the photonic pattern, split
+into tiers that the EBPG writes at different beam currents. Only the sidewalls
+need a fine beam; a 144 mm^2 chip at 300 uC/cm^2 takes ~24 h at 5 nA and
+~15 min at 500 nA.
 
-    12 x 12 mm chip = 144 mm^2, at 300 uC/cm^2 and 5 nA  ->  ~24 h
+Terms:
+  protect   union of wg_core, ring, grating, notes: the film that must survive.
+  zone      one fine-beam region, given as a dict in `zones` with keys:
+    name         label for the zone in the printed summary, e.g. "site".
+    select       selector string, or a list of them (see below).
+    margin       um added on every side of each selected bounding box.
+    layer        LAYERS key the tier is written to, e.g. "inv_t1" (layer 81).
+                 One zone per layer, so each can get its own beam current.
+    nA           beam current for this tier, in nA. Used only for the
+                 write-time estimate; the real current is set at EBPG job setup.
+    merge_slack  um; gaps between boxes narrower than this are filled, so no
+                 thin strip is left for the coarse beam. Optional, default 0.
+    shape        "box" (default) or "collar".
+    width        collar only: um the protected pattern is grown by to make the
+                 frame, instead of using boxes.
+  selector  string naming which placed geometry a zone covers; returns one
+            bounding box per match. "site" = each device plus its label,
+            "label" = labels only, "inst:<name>" = device sub-cells whose
+            cell name contains <name> (e.g. "inst:grating_coupler").
+  frame     a zone's area: its selector's boxes grown by `margin`, merged.
+  tier      what is exposed on one layer: `frame - protect`.
 
-The fix
--------
-Everything here reduces to one operation, ``inverse_of``::
+Zones run in list order; where frames overlap, the earlier zone keeps the
+overlap. The coarse frame is `coarse_box` (the whole chip, or the active area)
+minus all zone frames, so tiers share edges exactly.
 
-    box - pattern
+A seam is the edge where two tiers meet. The film there is etched anyway, so
+a seam only matters within electron-scatter range of a waveguide sidewall.
+`margin` (or collar `width`) is the seam-to-sidewall distance. Backscattered
+electrons travel ~30 um, so below that the sidewall dose also depends on the
+coarse tier's dose, and proximity correction is needed.
 
-A *zone* is one application of it: a set of boxes, the pattern inside them, and
-an output layer. Give each zone its own layer and the EBPG job can assign it its
-own spot size and beam current. A 180 nm grating line and a 15 um text glyph do
-not need the same beam.
-
-Zones are ordered finest first, and **order is precedence**: each zone claims
-only what earlier zones have not. That matters because per-feature boxes overlap
--- around one ``pulley_with_leads`` the grating-coupler box spans y 19..79 while
-the bend box spans y -11..39. Precedence resolves the overlap to exactly one
-tier; merging them would not.
-
-Whatever no zone claims becomes the coarse tier: ``coarse_box - claimed``.
-Subtracting the *plain* claimed frames, not the zones' boolean results, is what
-makes the tiers abut exactly: shared edges, no gap, no double exposure.
-
-The box is the selection
-------------------------
-A zone needs no separate feature-selection mechanism. Its pattern is just
-``protect`` intersected with its boxes, so placing the box *is* choosing the
-features. What the selectors below do is place a box around a named group.
-
-Why the seams are safe
-----------------------
-Every tier is exposed. Everything outside the waveguide is being removed, so a
-dose discontinuity at a tier boundary lands in material that is etched away
-regardless. The only edge whose dose matters is the waveguide sidewall, and a
-zone's ``margin`` is what holds the seam away from it. Note the tradeoff: more
-zones means less area in the finest tier, but seams closer to sidewalls. At a
-10 um margin a seam is outside the forward-scatter range but inside the ~30 um
-backscatter range, so proximity correction earns its keep.
-
-Everything works on klayout ``kdb.Region`` objects in database units, via
-``gf.Component.get_region``. Region booleans resolve on the integer grid, so
-abutment is exact rather than within some tolerance.
+Geometry is klayout `kdb.Region` on the database-unit grid (1 nm), so tier
+edges coincide exactly rather than to within a rounding tolerance.
 """
 
 from __future__ import annotations
@@ -65,8 +55,11 @@ from src.components.photonics.technology import _l
 # (x0, y0, x1, y1) in um
 Box = tuple[float, float, float, float]
 
-VALID_ZONE_KEYS = {"name", "select", "margin", "layer", "nA", "merge_slack"}
-SELECTOR_PREFIXES = ("inst:", "label", "site")
+VALID_ZONE_KEYS = {"name", "select", "margin", "layer", "nA", "merge_slack",
+                   "shape", "width"}
+VALID_SHAPES = ("box", "collar")
+# "all" is collar-only: it means the whole protected pattern, not a bbox.
+SELECTOR_PREFIXES = ("inst:", "device", "label", "site", "all")
 
 
 # =============================================================================
@@ -90,6 +83,16 @@ ZONES_PER_FEATURE = [
      "margin": 10.0, "layer": "inv_t3", "nA": 20.0},
     {"name": "text",    "select": "label",                "margin": 10.0,
      "layer": "inv_t4", "nA": 100.0},
+]
+
+
+# A collar hugging the whole pattern: the least fine area of any option, at the
+# cost of putting the tier seam `width` from every sidewall. See the module
+# docstring on seams -- at 2 um the seam is well inside the backscatter range,
+# so proximity correction stops being optional.
+ZONES_COLLAR = [
+    {"name": "collar", "select": "all", "shape": "collar", "width": 2.0,
+     "layer": "inv_t1", "nA": 5.0},
 ]
 
 
@@ -155,6 +158,9 @@ def resolve_selector(selector: str, sites: Sequence[dict]) -> list:
         Sub-instances of each device whose cell name contains the substring.
         Mapped out of device-local coordinates with ``ref.dtrans * sub.dbbox()``,
         which carries rotation and mirroring correctly.
+    ``device``
+        The chiplet-level device references themselves. For a device that is a
+        single primitive (a bare straight) and so has no sub-instances to match.
     ``label``
         The chiplet-level text references.
     ``site``
@@ -174,6 +180,9 @@ def resolve_selector(selector: str, sites: Sequence[dict]) -> list:
             for ref in refs[1:]:
                 box += ref.dbbox()
             boxes.append(box)
+
+    elif selector == "device":
+        boxes = [site["device"].dbbox() for site in sites if site.get("device")]
 
     elif selector == "label":
         boxes = [site["label"].dbbox() for site in sites if site.get("label")]
@@ -207,7 +216,7 @@ def validate_zones(zones: Sequence[dict]) -> None:
     single tier and quietly get one beam current instead of two.
     """
     if not zones:
-        raise ValueError("invert_zones is empty — nothing would be written fine")
+        raise ValueError("invert_zones is empty - nothing would be written fine")
 
     seen_layers: dict[str, str] = {}
     for zone in zones:
@@ -220,6 +229,30 @@ def validate_zones(zones: Sequence[dict]) -> None:
         for required in ("name", "select", "layer"):
             if required not in zone:
                 raise ValueError(f"zone {zone!r} is missing {required!r}")
+
+        shape = zone.get("shape", "box")
+        if shape not in VALID_SHAPES:
+            raise ValueError(
+                f"zone {zone['name']!r} has shape {shape!r}; "
+                f"expected one of {VALID_SHAPES}"
+            )
+        if shape == "collar":
+            if not zone.get("width", 0) > 0:
+                raise ValueError(
+                    f"collar zone {zone['name']!r} needs a positive 'width' (um)"
+                )
+        else:
+            if "width" in zone:
+                raise ValueError(
+                    f"zone {zone['name']!r} is a box but carries 'width'; "
+                    f"boxes are sized by 'margin'. Did you mean shape='collar'?"
+                )
+            if "all" in ([zone["select"]] if isinstance(zone["select"], str)
+                         else zone["select"]):
+                raise ValueError(
+                    f"zone {zone['name']!r}: selector 'all' is collar-only - a "
+                    f"box needs features to bound. Use shape='collar'."
+                )
 
         key = zone["layer"]
         if key not in LAYERS:
@@ -354,18 +387,40 @@ def add_inverse_tone_zones(
             selectors = [selectors]
 
         margin = zone.get("margin", 0.0)
-        frame = kdb.Region()
-        for selector in selectors:
-            boxes = resolve_selector(selector, sites)
-            if not boxes:
+
+        def _selection() -> kdb.Region:
+            """Union of the zone's selector boxes, padded by *margin*."""
+            picked = kdb.Region()
+            for selector in selectors:
+                boxes = resolve_selector(selector, sites)
+                if not boxes:
+                    raise ValueError(
+                        f"zone {zone['name']!r}: selector {selector!r} matched "
+                        f"nothing. Check the cell-name substring against "
+                        f"[i.cell.name for i in device.insts]."
+                    )
+                for box in boxes:
+                    picked.insert(to_kdb_box(pad_bbox(box, margin), dbu))
+            picked.merge()
+            return picked
+
+        if zone.get("shape", "box") == "collar":
+            # A ribbon hugging the geometry. The frame is the *grown pattern*,
+            # pattern included -- not `sized - pattern`. That keeps the algebra
+            # identical to a box zone: the frame contains the pattern, and the
+            # `frame - protect` below turns it into the outline for free. It is
+            # also what lets the coverage guard stay meaningful, since a bare
+            # ribbon would not contain the pattern it is protecting.
+            scope = protect if selectors == ["all"] else (protect & _selection())
+            if scope.is_empty():
                 raise ValueError(
-                    f"zone {zone['name']!r}: selector {selector!r} matched "
-                    f"nothing. Check the cell-name substring against "
-                    f"[i.cell.name for i in device.insts]."
+                    f"collar zone {zone['name']!r}: its selection contains no "
+                    f"protected geometry, so there is nothing to collar."
                 )
-            for box in boxes:
-                frame.insert(to_kdb_box(pad_bbox(box, margin), dbu))
-        frame.merge()
+            frame = scope.sized(_u(zone["width"]))
+            frame.merge()
+        else:
+            frame = _selection()
 
         slack = zone.get("merge_slack", 0.0)
         if slack:

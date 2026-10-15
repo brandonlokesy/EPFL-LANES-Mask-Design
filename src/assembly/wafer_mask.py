@@ -47,6 +47,13 @@ except ImportError as e:
     ) from e
 
 
+# Prefix for the per-chiplet cell names this module writes into the library.
+# Each wafer variant defines its own (CHIPLET_LG, CHIPLET_PH, ...) so that the
+# string is declared once and shared between the builder and the single-chip
+# exporter.
+CHIPLET_PREFIX = "CHIPLET"
+
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -335,24 +342,27 @@ def _draw_wafer_label(cell: gdstk.Cell,
                     layer=layer)
 
 
-def _stamp_chiplet_ids(cell: gdstk.Cell,
+def _stamp_wafer_id_at(cell: gdstk.Cell,
                        cfg: WaferConfig,
-                       wafer_ID_str: str) -> None:
+                       wafer_ID_str: str,
+                       x_centre: float,
+                       y_centre: float) -> None:
     """
-    Imprints the wafer ID (same string for the whole wafer) in the bottom-right
-    margin band of every chiplet, outside the active area.
+    Imprints the wafer ID in the bottom-right margin band of ONE chiplet, whose
+    centre sits at (`x_centre`, `y_centre`) in *cell*'s coordinates.
 
     The text is right-aligned: its right edge sits `stamp_margin_from_right`
-    inward from each chip's right edge, and its baseline sits
-    `stamp_margin_from_bottom` up from each chip's bottom edge. Rendered per
-    chiplet position so each die physically carries the wafer ID.
+    inward from the chip's right edge, and its baseline sits
+    `stamp_margin_from_bottom` up from the chip's bottom edge.
+
+    Used both by `_stamp_chiplet_ids` (once per chip position on a wafer) and by
+    `write_single_chiplet` (once, at the origin, for a standalone die).
     """
     if not wafer_ID_str:
         return
 
-    chip_w = cfg.chiplet.chip_width
-    chip_h = cfg.chiplet.chip_height
-    hw, hh = chip_w / 2, chip_h / 2
+    hw = cfg.chiplet.chip_width  / 2
+    hh = cfg.chiplet.chip_height / 2
 
     size  = cfg.stamp_size
     scale = size / 1000.0
@@ -363,15 +373,32 @@ def _stamp_chiplet_ids(cell: gdstk.Cell,
         for c in wafer_ID_str if c != " "
     ) + sum(500 * scale for c in wafer_ID_str if c == " ")
 
-    layer = LAYERS["wafer_id"]
+    right_edge = x_centre + hw - cfg.stamp_margin_from_right
+    baseline_y = y_centre - hh + cfg.stamp_margin_from_bottom
 
-    for x_centre, y_centre, _ in _compute_chip_positions(cfg.row_config, chip_w, chip_h):
-        right_edge = x_centre + hw - cfg.stamp_margin_from_right
-        baseline_y = y_centre - hh + cfg.stamp_margin_from_bottom
-        deplof_text(cell, wafer_ID_str,
-                    size=size,
-                    origin=(right_edge - line_width, baseline_y),
-                    layer=layer)
+    deplof_text(cell, wafer_ID_str,
+                size=size,
+                origin=(right_edge - line_width, baseline_y),
+                layer=LAYERS["wafer_id"])
+
+
+def _stamp_chiplet_ids(cell: gdstk.Cell,
+                       cfg: WaferConfig,
+                       wafer_ID_str: str) -> None:
+    """
+    Imprints the wafer ID (same string for the whole wafer) in the bottom-right
+    margin band of every chiplet, outside the active area.
+
+    Rendered per chiplet position so each die physically carries the wafer ID.
+    Note the geometry lands in *cell* (the wafer top cell), not inside the
+    chiplet cells — see `write_single_chiplet` for why that matters.
+    """
+    if not wafer_ID_str:
+        return
+
+    for x_centre, y_centre, _ in _compute_chip_positions(
+            cfg.row_config, cfg.chiplet.chip_width, cfg.chiplet.chip_height):
+        _stamp_wafer_id_at(cell, cfg, wafer_ID_str, x_centre, y_centre)
 
 
 # =============================================================================
@@ -382,7 +409,7 @@ def build_wafer_mask(lib: gdstk.Library,
                      cfg: WaferConfig,
                      cell_name: str = "WAFER",
                      chiplet_builder=None,
-                     chiplet_cell_prefix: str = "CHIPLET",
+                     chiplet_cell_prefix: str = CHIPLET_PREFIX,
                      wafer_ID_str: str = "",
                      add_date: bool = True) -> gdstk.Cell:
     """
@@ -451,6 +478,88 @@ def build_wafer_mask(lib: gdstk.Library,
     return wafer_cell
 
 
+def write_single_chiplet(lib: gdstk.Library,
+                         cfg: WaferConfig,
+                         out_dir: Path,
+                         stem: str,
+                         chiplet_cell_prefix: str = CHIPLET_PREFIX,
+                         wafer_ID_str: str = "",
+                         chiplet_number: int = 0) -> tuple[Path, Path]:
+    """
+    Writes a single die out of an already-built wafer library as its own
+    GDS + JSON pair, and returns the two paths.
+
+    Call this *after* `build_wafer_mask` on the same `lib`: the per-chiplet cells
+    it created are still in the library, so the exported die is the same geometry
+    by construction rather than a rebuild. Rebuilding would be wrong for the
+    photonic path in particular, whose gdsfactory helpers use fixed cell names
+    and need `gf.clear_cache()` between builds.
+
+    The wafer-ID stamp is re-drawn here because it is *not* part of a chiplet
+    cell — `_stamp_chiplet_ids` draws it into the wafer top cell at each chip
+    position, so a chiplet extracted verbatim would carry no wafer ID.
+
+    Parameters
+    ----------
+    lib                 : the library `build_wafer_mask` was called on
+    cfg                 : the same WaferConfig used for the wafer
+    out_dir             : directory to write into
+    stem                : filename stem, without extension
+    chiplet_cell_prefix : must match what was passed to `build_wafer_mask`
+    wafer_ID_str        : stamped on the die, as on the wafer
+    chiplet_number      : which die to export (0-based, as numbered by
+                          `_compute_chip_positions`: left-to-right, bottom-to-top)
+
+    Returns
+    -------
+    (gds_path, cfg_path)
+    """
+    chip_cell_name = f"{chiplet_cell_prefix}_{chiplet_number:02d}"
+    chip_cell = next((c for c in lib.cells if c.name == chip_cell_name), None)
+    if chip_cell is None:
+        available = sorted(c.name for c in lib.cells
+                           if c.name.startswith(f"{chiplet_cell_prefix}_"))
+        if not available:
+            hint = (f"no cells at all carry the prefix {chiplet_cell_prefix!r} — "
+                    f"does it match what build_wafer_mask was given?")
+        else:
+            hint = (f"{len(available)} chiplet cells present, "
+                    f"{available[0]}..{available[-1]}")
+        raise ValueError(f"No cell named {chip_cell_name!r} in the library: {hint}")
+
+    # Fresh library, same unit/precision invariant as everywhere else.
+    out = gdstk.Library(unit=1e-6, precision=1e-9)
+
+    # Wrap the chiplet in a top cell and stamp the wafer ID into the wrapper,
+    # mirroring how the wafer does it. Referencing rather than mutating the
+    # chiplet cell leaves the wafer library untouched, so the order in which the
+    # wafer and the chip are written does not matter.
+    top = out.new_cell(f"DIE_{chiplet_number:02d}")
+    top.add(gdstk.Reference(chip_cell, origin=(0, 0)))
+    _stamp_wafer_id_at(top, cfg, wafer_ID_str, 0.0, 0.0)
+
+    # The chiplet references marker/pad sub-cells (and, for local gates, a BASE_
+    # cell); they have to come along or the file is empty geometry.
+    out.add(chip_cell, *chip_cell.dependencies(True))
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    gds_path = out_dir / f"{stem}.gds"
+    cfg_path = out_dir / f"{stem}.json"
+
+    out.write_gds(gds_path)
+
+    # Sidecar records the chiplet config for the die actually exported, rebuilt
+    # the same way build_wafer_mask does. Wafer-level context lives in the
+    # sibling wafer JSON.
+    chip_cfg = cfg.chiplet.__class__(
+        **{**cfg.chiplet.to_dict(), "chiplet_number": chiplet_number}
+    )
+    chip_cfg.save(cfg_path)
+
+    return gds_path, cfg_path
+
+
 # =============================================================================
 # ENTRY POINT
 # =============================================================================
@@ -461,6 +570,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build a standard wafer mask.")
     parser.add_argument("--edit", action="store_true",
                         help="Edit mode — does not consume a run number.")
+    parser.add_argument("--chip", nargs="?", const=0, type=int, default=None,
+                        metavar="N",
+                        help="Also write a single-chip GDS alongside the wafer. "
+                             "Optionally give the chiplet number to export "
+                             "(0-based, default 0 = bottom-left die).")
     args = parser.parse_args()
 
     if args.edit:
@@ -496,3 +610,15 @@ if __name__ == "__main__":
     print(f"  Chip size:       {wafer_cfg.chiplet.chip_width/1000:.1f} x "
           f"{wafer_cfg.chiplet.chip_height/1000:.1f} mm")
     print(f"  Grid style:      {wafer_cfg.chiplet.grid_style}")
+
+    if args.chip is not None:
+        chip_gds, chip_json = write_single_chiplet(
+            lib, wafer_cfg, STANDARD_DIR, f"{stem}-CHIP",
+            chiplet_cell_prefix=CHIPLET_PREFIX,
+            wafer_ID_str=stem,
+            chiplet_number=args.chip,
+        )
+        print(f"Written: {chip_gds}")
+        print(f"Written: {chip_json}")
+        print(f"  Single chip:     chiplet {args.chip:02d}")
+
