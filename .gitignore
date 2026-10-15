@@ -24,3 +24,6 @@ masks/.registry.json
 # OS
 .DS_Store
 Thumbs.db
+
+*.stackdump
+bash.exe.stackdump
