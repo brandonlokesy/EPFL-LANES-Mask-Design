@@ -127,8 +127,6 @@ def build_photonic_chiplet_mask(
     # y of label anchor: just below device bottom edge
     label_y_offset = device.bbox().bottom - cfg.pulley_array_label_size * 6
 
-    sites: list = []
-
     for row in range(3):
         for col in range(3):
             x = (col - 1) * cfg.pulley_array_col_pitch
@@ -144,12 +142,7 @@ def build_photonic_chiplet_mask(
             )
             lbl.move((x, y + label_y_offset))
 
-            # Hand the zone selectors the references, not boxes: a zone may
-            # want the whole site, or just this device's grating couplers.
-            sites.append({"device": dev, "label": lbl})
-
-    return finish_chip(c, cfg, sites)
-
+    return finish_chip(c, cfg)
 
 if "__main__" == __name__:
     run_cli(PhotonicChipletConfig, build_photonic_chiplet_mask, stem="photonic_chiplet")

@@ -32,6 +32,7 @@ LAYERS = {
     "chip_boundary":        {"layer": 1,  "datatype": 0},
     "chip_active_area":     {"layer": 2,  "datatype": 0},
     "wafer_boundary":       {"layer": 3,  "datatype": 0},
+    "sample_id":            {"layer": 8,  "datatype" :0},
     "notes":                {"layer": 9,  "datatype": 0},
 
     # ── CHIP-LEVEL MARKERS ────────────────────────────────────────────────────
@@ -60,8 +61,9 @@ LAYERS = {
     "metal_contact":        {"layer": 45, "datatype": 0},   # contacts to heater
 
     # ── INVERSE-TONE EXPOSURE TIERS ──────────────────────────────────
-    # One SiN etch, fractured across tiers so the EBPG can assign a different
-    # spot size / beam current to each. inv_t1 is the finest. See
+    # One SiN etch, split across layers so the EBPG can assign a different
+    # beam current to each. inv_t1..inv_t8 hold the collars around the
+    # photonic pattern; inv_coarse holds the rest. See
     # src/components/photonics/inverse_tone.py
     "inv_coarse":           {"layer": 80, "datatype": 0},   # bulk fill, largest spot
     "inv_t1":               {"layer": 81, "datatype": 0},
@@ -99,5 +101,5 @@ LAYERS = {
     "keepout":              {"layer": 100, "datatype": 0},
     "dicing":               {"layer": 101, "datatype": 0},
     "write_field":          {"layer": 102, "datatype": 0},
-    "inv_frame":            {"layer": 103, "datatype": 0},   # inverse-tone tier outlines
+    "inv_frame":            {"layer": 103, "datatype": 0},   # inverse-tone zone outlines; no longer written
 }

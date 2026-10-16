@@ -80,86 +80,62 @@ geometry, check which layer it is on.**
 ### Inverse tone: one etch, several beam currents
 
 `--invert` on the photonic entry points adds the negative of the photonic pattern, so the
-SiN is etched everywhere except the rings and waveguides
-(`src/components/photonics/inverse_tone.py`). That means exposing nearly the whole
-144 mm² chip, so the exposure is split into **tiers**. A tier is one layer of the
-exposure, written with its own beam current. Every exposed point is in exactly one tier.
+SiN is etched everywhere except the rings, waveguides and labels
+(`add_inverted_layers` in `src/components/photonics/inverse_tone.py`, called from
+`finish_chip` via `add_inverse_tone`). That means exposing nearly the whole 144 mm² chip,
+so the exposure is split across layers, each written with its own beam current, **set at
+EBPG job setup, not in the GDS**. At 300 µC/cm², 144 mm² takes ~24 h at 5 nA and ~14 min
+at 500 nA, so only the area near sidewalls should get the low current.
 
-- **Fine tier**: the area near devices, where waveguide sidewalls are. One per zone, on
-  `inv_t1`…`inv_t8` (layers 81–88), written at low current (5–100 nA).
-- **Coarse tier**: the rest of the chip, on `inv_coarse` (layer 80), written at high
-  current (default 500 nA). It contains no sidewalls.
+The config field `invert_layers` decides the split. One entry per layer to keep:
 
-Terms used below:
+```python
+"ring":  {"collar_width": 10.0, "output_layer": "inv_t1"},  # µm, LAYERS key
+"notes": {"collar_width": 10.0, "output_layer": "inv_t2"},
+```
 
-- **`protect`**: everything on `wg_core`, `ring`, `grating` and `notes`. This film
-  survives; no tier exposes it.
-- **zone**: the definition of one fine tier: an area of the chip (its *frame*), an output
-  layer and a beam current. The tier it produces is `frame − protect`.
-- **frame**: either `shape: "box"` (default), the bounding boxes of the selected devices
-  grown by `margin` µm; or `shape: "collar"`, `protect` itself grown by `width` µm.
-- **selector**: picks what a box frame surrounds. `site` = each device plus its label;
-  `label` = each label; `inst:<name>` = each sub-cell of a device whose cell name
-  contains `<name>`, converted to chip coordinates with `ref.dtrans * sub.dbbox()`.
-- **seam**: the edge where two tiers meet.
-- **coverage guard**: the check that every part of `protect` lies inside some zone's frame.
+Terms:
 
-Because a tier is `frame − protect`, **the frame decides which features a zone writes**.
-Selectors only place the frame.
+- **`protect`**: union of the `invert_layers` keys (default `ring`, `wg_core`, `grating`,
+  `notes`), grown by `invert_bias`. This film survives.
+- **`exclude`**: union of `invert_exclude_layers` (corner markers, pads, chiplet ID),
+  grown by `invert_exclude_margin` (20 µm). Film left for the MLA150 step; never exposed.
+- **collar**: one key's geometry grown by its `collar_width`, clipped to `coarse_box`.
+  It contains the geometry itself. Written as `collar − protect − exclude` on its
+  `output_layer` (`inv_t1`…`inv_t8`, layers 81–88); several keys may share one.
+- **coarse**: `coarse_box − all collars − exclude`, on `inv_coarse` (layer 80).
+  `coarse_box` is the chip or the active area, set by `invert_coarse_extent`.
 
-`--invert-zones` picks one of three ready-made zone lists:
-
-| zone set | tiers | finest tier | total |
-|----------|-------|-------------|-------|
-| `site` (default) | 1 fine + coarse | 0.94 mm² @ 5 nA → 9.4 min | 23.3 min |
-| `feature` | 4 fine + coarse | 0.04 mm² @ 5 nA → 24 s | 14.9 min |
-| `collar` (w = 2 µm) | 1 fine + coarse | 0.03 mm² @ 5 nA → 17 s | 14.3 min |
-
-**Assign each layer its own beam current at EBPG job setup.** Written entirely at 5 nA,
-the same exposure takes ~23 h.
-
-The coarse tier takes ~14 min in all three sets, so every zone set has a total write time
-of at least ~14 min. Going from `site` to `feature` or `collar` saves ~9 min, by
-shortening the 5 nA tier from 9.4 min to 17–24 s. That improves edge quality, not speed:
-a shorter high-resolution write gives the beam and stage less time to drift. To cut the
-total, change the coarse tier instead: shrink it (`invert_coarse_extent = "active_area"`)
-or raise its beam current.
+Measured on the 3×3 pulley chiplet with the defaults: `inv_t1` 0.106 mm², `inv_t2`
+0.017 mm², `inv_coarse` 140.209 mm²; plus protect and exclude, 144.000 mm².
 
 Rules that are easy to break:
 
-- **Zone order is precedence, finest first.** Frames can overlap: around one
-  `pulley_with_leads` the grating-coupler box spans y 19…79 µm and the bend box spans
-  y −11…39 µm. Each zone takes only area no earlier zone took, so the earlier zone keeps
-  the overlap.
-- **The coarse frame is `coarse_box` minus all zone frames** — the frames, not the
-  tiers. That gives tiers shared edges with no gap and no double exposure. `coarse_box` is
-  the chip or the active area, set by `invert_coarse_extent`.
-- **The coverage guard must raise an error.** Protected geometry outside every frame falls
-  into the coarse tier, so its sidewall is written with the largest spot. This happens
-  when a zone set omits a feature class: removing the `routing` zone from
-  `ZONES_PER_FEATURE` leaves 359 µm² of bends and straights uncovered. Set
-  `invert_allow_uncovered = True` only when that is intended.
+- **Dict order is precedence.** Each collar loses the area earlier collars already took,
+  so no point is on two layers. Where collars overlap, the earlier key keeps the overlap.
+- **Coarse subtracts the collars, not the exposed ribbons.** That gives shared edges with
+  no gap and no double exposure.
+- **Each collar subtracts all of `protect`, not only its own key.** A ring sits 150 nm from
+  its bus waveguide, so the ring's collar covers part of the waveguide.
+- **`collar_width` must exceed `invert_bias`**, and `output_layer` must be `inv_t1`…`inv_t8`;
+  `add_inverted_layers` raises otherwise. If `protect` reaches past its collar, the
+  coarse layer exposes the waveguide edge.
 - **`break_polygons` runs last.** A GDSII polygon holds at most 1024 points (one 8 KB
   record), and the booleans produce ~18 000-point polygons, so they must be split. Any
   boolean after the split merges the pieces back.
-- **`margin` (box) or `width` (collar) is the seam-to-sidewall distance.** Shrinking the
-  fine tiers moves seams closer to sidewalls. At 10 µm a seam is outside forward-scatter
-  range but inside the ~30 µm backscatter range; at 2 µm it is inside both. Then the
-  sidewall dose also depends on the coarse tier's dose, and **proximity correction is
-  required**. Large margins cost little: `merge_slack` (µm) fills gaps between boxes
-  narrower than its value, so boxes that grow into each other merge.
-- **A collar's frame is `protect.sized(width)`, which includes the pattern** — not
-  `sized − protect`. Then `frame − protect` gives the ribbon, tiers still share edges,
-  and the coverage guard works. A ribbon-only frame does not contain `protect`, so the
-  guard would always fire.
+- **`collar_width` is the distance from a sidewall to the fine/coarse edge.** At 10 µm the
+  edge is outside forward-scatter range but inside the ~30 µm backscatter range, so the
+  sidewall dose also depends on the coarse layer's dose. Narrower collars make proximity
+  correction more necessary.
 - **Printed or raised text must be ASCII.** On this machine an em-dash encodes as cp1252
   byte `0x97`, which cuts the message off and makes the output invalid UTF-8; `grep` then
   reports "Binary file matches" and hides the text. Comments and docstrings may use any
   characters.
 
 Check any inverted build with `python -m src.scripts.verify_inverse_tone <gds>`. It reads
-the GDS back, recomputes the tiers for each chiplet independently, and checks **every pair**
-of tiers for overlap. Sub-nanometre residuals on a few checks are expected: splitting
+the GDS back and, for each chiplet independently, checks **every pair** of `inv_*` layers
+for overlap, that nothing is left unexposed, that no layer touches `protect`, and the
+1024-point limit. Sub-nanometre residuals on a few checks are expected: splitting
 polygons snaps vertices to the 1 nm grid, while the positive geometry is drawn much finer
 (`pulley_n_segments = 2048` gives 15 nm segments on a 5 µm ring; 512 segments would
 already be within 0.09 nm of the true circle).
@@ -313,7 +289,7 @@ reason, or a constraint? If not, delete it.
   variable (`protect`), a layer (`inv_t1`, 81), a value with units (30 µm, 5 nA). Not
   "the pattern" when you mean `protect` = union of `wg_core`, `ring`, `grating`, `notes`.
 - **Define a term once, where it first appears**, by what it is in the code. If a word
-  (e.g. "zone", "frame", "tier") has a specific meaning here, say it in one line.
+  (e.g. "collar", "protect", "exclude") has a specific meaning here, say it in one line.
 - **No filler or metaphor**: "load-bearing", "earns its keep", "the whole idea", "under
   the hood", "crucially", "robust", "seamless", "leverage", "simply", "note that".
 - **Docstring = what it does, inputs with units, return value, and any non-obvious

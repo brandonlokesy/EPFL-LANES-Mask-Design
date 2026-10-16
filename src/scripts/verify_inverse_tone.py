@@ -1,51 +1,30 @@
 """
 verify_inverse_tone.py
 ======================
-Independent check of the two-tier inverse-tone geometry in a written GDS.
-
-Reads the file back with klayout and re-derives the tiers from scratch, so it
-catches anything the builder got wrong *and* anything the GDS writer damaged on
-the way out. Run it on any file built with ``--invert``::
+Reads a GDS built with ``--invert`` back with klayout and checks the inverse-tone
+layers, independently of the code that wrote them::
 
     python -m src.scripts.verify_inverse_tone masks/experimental/photonic_chiplet_EDIT.gds
 
-The properties being checked are the ones that decide whether the exposure is
-correct on the wafer:
+Terms:
+  tier      the exposure on one output layer: inv_t1..inv_t8 or inv_coarse.
+  protect   union of wg_core, ring, grating, notes: film that must survive.
+  exclude   corner_markers, pad_markers, chiplet_id, grown by 20 um: film
+            left for the MLA150 step.
+  extent    bounding box of all tiers together.
 
-  1. No two tiers overlap          -- overlap means double exposure, checked
-                                      for every pair, not just fine vs coarse.
-  2. The tiers plus the surviving
-     film tile the extent exactly   -- a gap is film that should have gone and
-                                       did not.
-  3. No tier touches the
-     protected pattern              -- overlap means an exposed waveguide.
-  4. Every protected shape sits
-     inside a zone frame            -- otherwise the coarse beam writes a
-                                       sidewall. The builder raises on this too;
-                                       this is the independent confirmation.
-  5. Polygon vertex counts are
-     within the GDSII record limit  -- above it, strict readers reject the file
-                                       and lenient ones misparse it.
+Checks, per cell that holds tiers (one for a chiplet, one per die on a wafer):
+  1. No two tiers overlap, for every pair. Overlap is double exposure.
+  2. extent - tiers - protect - exclude is empty. A remainder is film that
+     should have been etched.
+  3. No tier overlaps protect. Overlap etches a waveguide.
+  4. No polygon has more than 1024 points, the GDSII limit (one 8 KB record).
 
-Why some residuals are not zero
--------------------------------
-The booleans themselves are exact -- they run on the integer database grid. But
-GDSII caps an XY record at 8 KB (1024 points), and subtracting a few hundred
-curved devices from a box produces polygons with ~18000 vertices, so the tiers
-must be fractured before writing. Fracturing re-snaps vertices to the 1 nm grid
-and leaves seam artifacts along its cut lines.
-
-Those artifacts are reported with their actual size rather than folded into a
-binary pass. A residual counts as grid noise only if it vanishes when eroded by half of
-*noise_floor_nm* -- i.e. it contains no feature of real width. Anything with
-substance to it is a real defect and fails. For reference the
-EBPG5000 places to < 20 nm, so single-nanometre residuals are far below what the
-tool can resolve -- but they are shown, not hidden.
-
-The underlying vertex density is worth revisiting at source: at
-``pulley_n_segments = 2048`` a 5 um-radius ring is drawn with 15 nm chords, when
-512 segments already gives 0.09 nm chord error. That value is a workaround for a
-polygon gap in gdsfactory's ``coupler_pulley``, so it is not changed here.
+Residuals that are not zero: the output polygons are split to stay under 1024
+points, and the split snaps vertices to the 1 nm grid, while the rings are drawn
+with 15 nm segments (pulley_n_segments = 2048). A residual passes as grid noise
+when eroding it by noise_floor_nm / 2 (default 2.5 nm) leaves nothing, i.e. it
+has no part wider than noise_floor_nm. Anything wider fails.
 """
 
 from __future__ import annotations
@@ -135,8 +114,6 @@ def verify_cell(layout: kdb.Layout,
         merged.merge()
         tiers[key] = merged
 
-    frame = _region(layout, cell, "inv_frame")
-
     protect = kdb.Region()
     for key in protect_keys:
         protect += _region(layout, cell, key)
@@ -171,10 +148,6 @@ def verify_cell(layout: kdb.Layout,
     for key in sorted(tiers):
         checks.append((f"{key} never touches the protected pattern",
                        tiers[key] & protect))
-
-    # 4. and everything protected must be inside a zone frame
-    checks.append(("every protected shape sits inside a zone frame",
-                   protect - frame - exclude))
 
     out = []
     ok = True

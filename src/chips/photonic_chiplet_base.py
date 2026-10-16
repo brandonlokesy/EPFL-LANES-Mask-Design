@@ -11,9 +11,8 @@ point. A concrete chiplet supplies only its device payload:
 
     def build_my_chiplet(cfg, cell_name=None):
         c = build_chip_frame(cfg, cell_name or f"MY_CHIPLET_{cfg.chiplet_number:03d}")
-        sites = []
-        ...                            # place devices + labels, append to sites
-        return finish_chip(c, cfg, sites)
+        ...                            # place devices + labels
+        return finish_chip(c, cfg)
 
     if __name__ == "__main__":
         run_cli(MyChipletConfig, build_my_chiplet, stem="my_chiplet")
@@ -40,12 +39,7 @@ from src.chips.layout_geometry import (
 from src.utils.text import draw_chiplet_number
 from src.components.photonics.technology import _l
 from src.components.photonics.inverse_tone import (
-    add_inverse_tone_zones,
-    write_time_s,
-    fmt_duration,
-    ZONES_PER_SITE,
-    ZONES_PER_FEATURE,
-    ZONES_COLLAR,
+    add_inverted_layers
 )
 
 
@@ -104,37 +98,31 @@ class PhotonicChipletBaseConfig:
     cross_section:  str   = "SIN_VIS"   # key into technology.CROSS_SECTIONS
 
     # ── Inverse-tone (negative) exposure ──────────────────────────────────
-    # Etch everything except the rings and waveguides, fractured into tiers so
-    # the EBPG can write each at its own spot size. See inverse_tone.py.
+    # Etch everything except the layers in invert_layers, split across output
+    # layers so each can get its own beam current at EBPG job setup. See
+    # inverse_tone.py.
     invert_tone:            bool  = False
     invert_coarse_extent:   str   = "chip"       # "chip" | "active_area"
     invert_bias:            float = 0.0          # µm — dilate surviving geometry
-    # Exposure tiers, FINEST FIRST — list order is precedence. Each zone needs
-    # its own layer so the EBPG job can give it its own spot / beam current.
-    # ZONES_PER_FEATURE splits grating couplers, ring, routing and text apart.
-    invert_zones:           list  = field(default_factory=lambda: list(ZONES_PER_SITE))
-    # Protected geometry covered by no zone would have its edges written by the
-    # coarse beam. That is an error unless you mean it.
-    invert_allow_uncovered: bool  = False
-    invert_protect_layers:  list  = field(default_factory=lambda: [
-        "wg_core", "ring", "grating", "notes",   # "notes" keeps the device labels
-    ])
-    # MLA150 features are patterned in a later step — leave film islands under
-    # them. Set to [] to clear the whole chip instead.
+    # Key: layer whose geometry survives. collar_width: µm the exposed ribbon
+    # extends past that layer's edges, must exceed invert_bias. output_layer:
+    # LAYERS key the ribbon is written to, one of inv_t1..inv_t8. Dict order is
+    # precedence: where collars overlap, the earlier key keeps the overlap.
+    invert_layers: dict = field(default_factory=lambda: {
+        "ring":    {"collar_width": 1.0, "output_layer": "inv_t1"},
+        "wg_core": {"collar_width": 1.0, "output_layer": "inv_t1"},
+        "grating": {"collar_width": 1.0, "output_layer": "inv_t1"},
+        "notes":   {"collar_width": 2.0, "output_layer": "inv_t2"},
+        "sample_id" : {"collar_width" : 100.0, "output_layer" : "inv_t3"}
+    })
+    # MLA150 features, patterned in a later step: film is left under them.
     invert_exclude_layers:  list  = field(default_factory=lambda: [
         "corner_markers", "pad_markers", "chiplet_id",
     ])
     invert_exclude_margin:  float = 20.0         # µm around excluded footprints
-    invert_draw_frames:     bool  = True         # tier outlines on inv_frame (103)
-    # GDSII caps an XY record at 8 KB = 1024 points. Subtracting the curved
-    # devices from a box otherwise yields ~18000-vertex polygons, which the
-    # writer emits as records a strict reader rejects. 0 disables the split.
+    # GDSII stores at most 1024 points per polygon (one 8 KB record); larger
+    # output polygons are split.
     invert_max_vertices:    int   = 1024
-
-    # Write-time estimate only — recorded for traceability, not geometry.
-    # Per-tier currents live in invert_zones; this is the coarse tier's.
-    invert_dose_uC_cm2:       float = 300.0
-    invert_coarse_current_nA: float = 500.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -284,105 +272,69 @@ def coarse_extent_box(cfg: PhotonicChipletBaseConfig) -> tuple:
     hh = cfg.chip_height / 2 - inset
     return (-hw, -hh, hw, hh)
 
-
-def add_inverse_tone_tiers(c: gf.Component,
-                           cfg: PhotonicChipletBaseConfig,
-                           sites: list) -> dict:
+def add_inverse_tone(
+        c: gf.Component,
+        cfg: PhotonicChipletBaseConfig,
+        ) -> dict:
     """
-    Boolean the negative of the photonic pattern into tiers, and stash the
-    summary on ``c.info`` so the entry point can report it.
+    Run add_inverted_layers on c with the invert_* fields of cfg. The returned
+    summary is also stored as a JSON string in c.info["inv_summary"], because
+    run_cli receives only c from the builder.
     """
-    summary = add_inverse_tone_zones(
-        c,
-        zones=cfg.invert_zones,
-        sites=sites,
-        coarse_box=coarse_extent_box(cfg),
-        protect_layers=cfg.invert_protect_layers,
+    summary = add_inverted_layers(
+        c=c,
+        invert_layers=cfg.invert_layers,
         exclude_layers=cfg.invert_exclude_layers,
-        exclude_margin=cfg.invert_exclude_margin,
+        coarse_box=coarse_extent_box(cfg),
         bias=cfg.invert_bias,
+        exclude_margin=cfg.invert_exclude_margin,
         max_vertices=cfg.invert_max_vertices,
-        frame_layer="inv_frame" if cfg.invert_draw_frames else None,
-        allow_uncovered_pattern=cfg.invert_allow_uncovered,
     )
-    for tier in summary["tiers"]:
-        current = tier["nA"] or cfg.invert_coarse_current_nA
-        tier["current_nA"] = current
-        tier["time_s"] = write_time_s(
-            tier["area_um2"], cfg.invert_dose_uC_cm2, current
-        )
+
     c.info["inv_summary"] = json.dumps(summary)
     return summary
-
+    
 
 def finish_chip(c: gf.Component,
                 cfg: PhotonicChipletBaseConfig,
-                sites: list) -> gf.Component:
+                ) -> gf.Component:
     """
-    Last step of every chiplet builder. *sites* is one dict per device,
-    ``{"device": ref, "label": ref}``, which the inverse-tone zone selectors use.
+    Last step of every chiplet builder. If `invert_tone` is `True`, creates an inverted layer.
     """
     if cfg.invert_tone:
-        add_inverse_tone_tiers(c, cfg, sites)
+        add_inverse_tone(c, cfg)
     return c
 
+def print_inverted_layers_summary(summary: dict) -> None:
+    layers = summary["layers"]
+    exposed = sum(e["area_um2"] for e in layers)
+    protect = summary["protect_area_um2"]
+    exclude = summary["exclude_area_um2"]
 
-def print_inverse_tone_summary(cfg: PhotonicChipletBaseConfig, summary: dict) -> None:
-    tiers = summary["tiers"]
-    total_area = sum(t["area_um2"] for t in tiers)
-    total_time = sum(t["time_s"] for t in tiers)
-    finest = min(t["current_nA"] for t in tiers)
-    naive = write_time_s(total_area, cfg.invert_dose_uC_cm2, finest)
-
-    print(f"  Inverse tone:    ON  ({len(tiers)} tiers, "
-          f"coarse extent = {cfg.invert_coarse_extent})")
-    print(f"    {'tier':<10}{'layer':>10}{'regions':>9}{'area':>12}"
-          f"{'current':>10}{'time':>10}")
-    for tier in tiers:
-        layer = LAYERS[tier["layer"]]["layer"]
-        print(f"    {tier['name']:<10}{tier['layer'] + f' ({layer})':>10}"
-              f"{tier['n_regions']:>9d}{tier['area_um2']/1e6:>9.3f} mm^2"
-              f"{tier['current_nA']:>8g} nA{fmt_duration(tier['time_s']):>10}")
-    print(f"    {'TOTAL':<10}{'':>10}{'':>9}{total_area/1e6:>9.3f} mm^2"
-          f"{'':>10}{fmt_duration(total_time):>10}")
-    print(f"    vs single-tier at {finest:g} nA: {fmt_duration(naive)}")
-    print(f"    surviving      {summary['protect_area_um2']/1e6:8.3f} mm^2 protected, "
-          f"{summary['excluded_area_um2']/1e6:8.3f} mm^2 excluded")
-    print(f"    polygons       max {summary['max_vertices_out']} vertices "
-          f"(GDSII record limit is 1024)")
-    print(f"    NOTE beam-on estimate at {cfg.invert_dose_uC_cm2:g} uC/cm^2; "
-          f"excludes settling, stage moves and PEC.")
+    print(f"  Inverse tone:    ON  ({len(layers)} output layers)")
+    print(f"    {'layer':<12}{'area':>14}{'polygons':>10}{'max pts':>9}")
+    for e in layers:
+        print(f"    {e['layer']:<12}{e['area_um2']/1e6:>9.3f} mm^2"
+              f"{e['n_polygons']:>10d}{e['max_points']:>9d}")
+    print(f"    {'protect':<12}{protect/1e6:>9.3f} mm^2")
+    print(f"    {'exclude':<12}{exclude/1e6:>9.3f} mm^2")
+    print(f"    {'TOTAL':<12}{(exposed + protect + exclude)/1e6:>9.3f} mm^2")
 
 
 # =============================================================================
 # ENTRY POINT
 # =============================================================================
 
-DEFAULT_ZONE_SETS = {
-    "site":    ZONES_PER_SITE,
-    "feature": ZONES_PER_FEATURE,
-    "collar":  ZONES_COLLAR,
-}
-
-
 def run_cli(config_cls: type,
             build_fn: Callable[..., gf.Component],
             stem: str,
-            description: str = "Build a standalone photonic chiplet mask.",
-            zone_sets: dict | None = None) -> None:
+            description: str = "Build a standalone photonic chiplet mask.") -> None:
     """
     Shared ``__main__`` for photonic chiplets: parse the flags, build, write
     ``<stem>_EDIT`` (with --edit) or ``<stem>_NNN`` GDS + JSON to
     masks/experimental/, and report the inverse-tone tiers.
-
-    *zone_sets* maps each ``--invert-zones`` choice to a zone list. Per-feature
-    zones select device sub-instances by name, so a chiplet whose devices differ
-    from the pulley's overrides ``"feature"``; the coverage guard and the
-    "matched nothing" check catch a set that does not fit.
     """
     import argparse
-
-    zone_sets = {**DEFAULT_ZONE_SETS, **(zone_sets or {})}
 
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--edit", action="store_true",
@@ -393,20 +345,12 @@ def run_cli(config_cls: type,
     parser.add_argument("--invert-extent", choices=("chip", "active_area"),
                         default="chip",
                         help="Outer extent of the coarse tier (default: chip).")
-    parser.add_argument("--invert-zones", choices=("site", "feature", "collar"),
-                        default="site",
-                        help="Tiering: 'site' = one fine tier per device "
-                             "(default); 'feature' = separate tiers for grating "
-                             "couplers, ring, routing and text; 'collar' = a "
-                             "ribbon hugging the pattern (least fine area, needs "
-                             "proximity correction).")
     args = parser.parse_args()
 
     gf.gpdk.PDK.activate()
     cfg = config_cls(
         invert_tone=args.invert,
         invert_coarse_extent=args.invert_extent,
-        invert_zones=list(zone_sets[args.invert_zones]),
     )
     c = build_fn(cfg)
     EXPERIMENTAL_DIR.mkdir(parents=True, exist_ok=True)
@@ -418,5 +362,5 @@ def run_cli(config_cls: type,
     print(f"GDS  -> {gds_path}")
     print(f"JSON -> {cfg_path}")
     if cfg.invert_tone:
-        print_inverse_tone_summary(cfg, json.loads(c.info["inv_summary"]))
+        print_inverted_layers_summary(json.loads(c.info["inv_summary"]))
     c.show()

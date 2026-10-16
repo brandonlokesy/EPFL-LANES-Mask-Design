@@ -35,11 +35,7 @@ from src.chips.photonic_chiplet_mask import (
     PhotonicChipletConfig,
     build_photonic_chiplet_mask,
 )
-from src.components.photonics.inverse_tone import (
-    ZONES_PER_SITE,
-    ZONES_PER_FEATURE,
-    ZONES_COLLAR,
-)
+
 from src.config.run_registry import next_wafer
 
 
@@ -140,18 +136,11 @@ if __name__ == "__main__":
                              "Optionally give the chiplet number to export "
                              "(0-based, default 0 = bottom-left die).")
     parser.add_argument("--invert", action="store_true",
-                        help="Build the two-tier inverse-tone (negative) exposure "
-                             "layers on every chiplet.")
+                        help="Build the inverse-tone (negative) exposure layers "
+                             "inv_t1..inv_t8 + inv_coarse on every chiplet.")
     parser.add_argument("--invert-extent", choices=("chip", "active_area"),
                         default="chip",
                         help="Outer extent of the coarse tier (default: chip).")
-    parser.add_argument("--invert-zones", choices=("site", "feature", "collar"),
-                        default="site",
-                        help="Tiering: 'site' = one fine tier per device "
-                             "(default); 'feature' = separate tiers for grating "
-                             "couplers, ring, routing and text; 'collar' = a "
-                             "ribbon hugging the pattern (least fine area, needs "
-                             "proximity correction).")
     args = parser.parse_args()
 
     gf.gpdk.PDK.activate()
@@ -169,10 +158,6 @@ if __name__ == "__main__":
         chiplet      = PhotonicChipletConfig(
             invert_tone          = args.invert,
             invert_coarse_extent = args.invert_extent,
-            invert_zones         = list(
-                {"site": ZONES_PER_SITE, "feature": ZONES_PER_FEATURE,
-                 "collar": ZONES_COLLAR}[args.invert_zones]
-            ),
         ),
     )
 

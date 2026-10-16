@@ -26,18 +26,6 @@ from src.chips.photonic_chiplet_base import (
     run_cli,
 )
 from src.components.photonics.technology import LAYER, CROSS_SECTIONS
-from src.components.photonics.inverse_tone import ZONES_PER_FEATURE
-
-
-# Each device is a bare straight with no sub-instances, so the per-feature set
-# selects the device itself. It keeps the pulley set's routing layer and current,
-# so a tier layer means the same feature class on every photonic chiplet.
-_ZONE = {z["name"]: z for z in ZONES_PER_FEATURE}
-ZONES_PER_FEATURE_WG = [
-    {**_ZONE["routing"], "select": "device"},
-    _ZONE["text"],
-]
-
 
 # =============================================================================
 # CONFIGURATION
@@ -80,7 +68,15 @@ def build_photonic_wg_chiplet(
     xs = CROSS_SECTIONS[cfg.cross_section]
     wg = gf.components.straight(length=cfg.wg_length, cross_section=xs)
 
-    sites: list = []
+    sample_label = gf.components.text(
+        text = "Si3N4-2610-C05",
+        size = 350,
+        layer = LAYER.SAMPLE_ID
+    )
+
+    lbl = c << sample_label
+    lbl.center= (-3000, 0)
+    lbl.rotate(90, center=lbl.center)
 
     for i in range(cfg.wg_count):
         # Stack centred on y = 0, W1 at the bottom.
@@ -98,11 +94,8 @@ def build_photonic_wg_chiplet(
         lbl.xmax = dev.xmin - cfg.wg_label_gap
         lbl.y = y
 
-        sites.append({"device": dev, "label": lbl})
-
-    return finish_chip(c, cfg, sites)
+    return finish_chip(c, cfg)
 
 
 if "__main__" == __name__:
-    run_cli(PhotonicWgChipletConfig, build_photonic_wg_chiplet, stem="photonic_chiplet_wg",
-            zone_sets={"feature": ZONES_PER_FEATURE_WG})
+    run_cli(PhotonicWgChipletConfig, build_photonic_wg_chiplet, stem="photonic_chiplet_wg")

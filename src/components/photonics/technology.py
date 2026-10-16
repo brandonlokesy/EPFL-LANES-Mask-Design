@@ -24,6 +24,7 @@ class LAYER:
     CHIP_BOUNDARY    = _l("chip_boundary")
     ACTIVE_AREA      = _l("chip_active_area")
     NOTES            = _l("notes")
+    SAMPLE_ID        = _l("sample_id")
 
 
 XS_SIN      = gf.cross_section.strip(width=0.8,  layer=LAYER.WG_CORE)  # SiN @ 1550 nm
