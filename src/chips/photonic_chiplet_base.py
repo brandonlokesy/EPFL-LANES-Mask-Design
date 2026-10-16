@@ -56,6 +56,10 @@ class PhotonicChipletBaseConfig:
     Infrastructure fields mirror ``ChipletConfig`` exactly so the shared
     helper functions (add_corner_markers, etc.) work without modification.
     """
+    # ── SAMPLE ID ────────────────────────────────────────────────────
+    # Sample this chiplet is made for, e.g. "Si3N4-2610-C05". When set, it
+    # names the output GDS/JSON instead of <stem>_<chiplet_number>.
+    sample_id : str = ""
 
     # ── Chip dimensions ────────────────────────────────────────────────────
     chip_width:   float = 12000.0
@@ -354,7 +358,8 @@ def run_cli(config_cls: type,
     )
     c = build_fn(cfg)
     EXPERIMENTAL_DIR.mkdir(parents=True, exist_ok=True)
-    name = f"{stem}_EDIT" if args.edit else f"{stem}_{cfg.chiplet_number:03d}"
+    base = cfg.sample_id or f"{stem}_{cfg.chiplet_number:03d}"
+    name = f"{base}_EDIT" if args.edit else base
     gds_path = EXPERIMENTAL_DIR / f"{name}.gds"
     cfg_path = EXPERIMENTAL_DIR / f"{name}.json"
     c.write_gds(gds_path)

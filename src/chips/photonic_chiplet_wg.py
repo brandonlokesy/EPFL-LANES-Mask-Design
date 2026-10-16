@@ -51,6 +51,7 @@ class PhotonicWgChipletConfig(PhotonicChipletBaseConfig):
     wg_pitch:       float = 100.0
     wg_label_size:  float = 15.0    # µm text height
     wg_label_gap:   float = 20.0    # µm between label and waveguide end
+    sample_id : str = "Si3N4-2610-C05"
 
 
 # =============================================================================
@@ -69,7 +70,7 @@ def build_photonic_wg_chiplet(
     wg = gf.components.straight(length=cfg.wg_length, cross_section=xs)
 
     sample_label = gf.components.text(
-        text = "Si3N4-2610-C05",
+        text = cfg.sample_id,
         size = 350,
         layer = LAYER.SAMPLE_ID
     )
